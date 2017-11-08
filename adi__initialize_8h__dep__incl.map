@@ -1,0 +1,7 @@
+<map id="projects/iio_demo/app/system/adi_initialize.h" name="projects/iio_demo/app/system/adi_initialize.h">
+<area shape="rect" id="node1" title=" " alt="" coords="338,5,511,47"/>
+<area shape="rect" id="node2" href="$platform__init_8c.html" title="ADuCM3029 platform initialization source." alt="" coords="5,102,212,143"/>
+<area shape="rect" id="node3" href="$ad7124-8pmdz_2src_2main_8c.html" title="Implementation of Main Function." alt="" coords="236,102,411,143"/>
+<area shape="rect" id="node4" href="$blinky__example_8c.html" title=" " alt="" coords="435,95,617,151"/>
+<area shape="rect" id="node5" href="$adi__initialize_8c.html" title=" " alt="" coords="641,102,813,143"/>
+</map>
