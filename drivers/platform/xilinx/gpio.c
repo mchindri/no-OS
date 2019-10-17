@@ -42,13 +42,95 @@
 /******************************************************************************/
 
 #include <stdlib.h>
+
+#include <xparameters.h>
+#ifdef XPAR_XGPIO_NUM_INSTANCES
+#include <xgpio.h>
+#endif
+#ifdef XPAR_XGPIOPS_NUM_INSTANCES
+#include <xgpiops.h>
+#endif
+
 #include "error.h"
 #include "gpio.h"
-#include "xilinx_platform_drivers.h"
+#include "gpio_extra.h"
 
 /******************************************************************************/
 /************************ Functions Definitions *******************************/
 /******************************************************************************/
+
+/**
+ * @brief Prepare the GPIO decriptor.
+ * @param desc - The GPIO descriptor.
+ * @param init_param - The structure that contains the GPIO parameters.
+ * @return SUCCESS in case of success, FAILURE otherwise.
+ */
+int32_t _gpio_init(struct gpio_desc *desc,
+		   struct gpio_init_param *init_param)
+{
+	int32_t		ret;
+	xil_gpio_desc	*xdesc;
+	xil_gpio_init	*xinit;
+
+	ret = FAILURE;
+
+	xdesc = desc->extra;
+	xinit = init_param->extra;
+
+	xdesc->type = xinit->type;
+	desc->number = init_param->number;
+
+	switch (xinit->type) {
+	case GPIO_PL:
+#ifdef XGPIO_H
+		xdesc->instance = (XGpio *)malloc(sizeof(*(xdesc->instance)));
+		if(!xdesc->instance)
+			goto error;
+
+		xdesc->config = XGpio_LooskupConfig(xinit->device_id);
+		if(xdesc->config == NULL)
+			goto error;
+
+		ret = XGpio_CfgInitialize(xdesc->instance,
+					  xdesc->config,
+					  ((XGpio_Config*)xdesc->config)
+					  ->BaseAddress);
+		if(ret != SUCCESS)
+			goto error;
+
+		break;
+#endif
+		goto not_defined;
+	case GPIO_PS:
+#ifdef XGPIOPS_H
+		xdesc->instance = (XGpioPs *)malloc(sizeof(*(xdesc->instance)));
+		if(!xdesc->instance)
+			goto error;
+
+		xdesc->config = XGpioPs_LookupConfig(xinit->device_id);
+		if(xdesc->config == NULL)
+			goto error;
+
+		ret = XGpioPs_CfgInitialize(xdesc->instance,
+				xdesc->config,
+				((XGpioPs_Config*)xdesc->config)->BaseAddr);
+		if(ret != SUCCESS)
+			goto error;
+
+		break;
+#endif
+		/* Intended fallthrough */
+	default:
+		goto not_defined;
+		break;
+	}
+
+	return SUCCESS;
+	error:
+		free(xdesc->instance);
+	not_defined:
+		return FAILURE;
+}
 
 /**
  * @brief Obtain the GPIO decriptor.
@@ -57,46 +139,29 @@
  * @return SUCCESS in case of success, FAILURE otherwise.
  */
 int32_t gpio_get(struct gpio_desc **desc,
-		 uint8_t gpio_number)
+		 struct gpio_init_param *init_param)
 {
-	gpio_desc *descriptor;
-	xil_gpio_desc *xil_descriptor;
-	int32_t ret;
+	gpio_desc	*descriptor;
+	xil_gpio_desc	*extra;
+	int32_t		ret;
 
-	descriptor = calloc(1, sizeof *descriptor);
-	if (!descriptor)
+	descriptor = (struct gpio_desc *)malloc(sizeof(*descriptor));
+	extra = (struct xil_gpio_desc*)malloc(sizeof(*extra));
+
+	if (!descriptor || !extra)
 		return FAILURE;
 
-	descriptor->extra = calloc(1, sizeof *xil_descriptor);
-	if (!(descriptor->extra)) {
-		free(descriptor);
-		return FAILURE;
-	}
+	descriptor->extra = extra;
+	ret = _gpio_init(descriptor, init_param);
 
-	xil_descriptor = descriptor->extra;
-
-#ifdef _XPARAMETERS_PS_H_
-	xil_descriptor->config = XGpioPs_LookupConfig(0);
-	if (xil_descriptor->config == NULL)
+	if(ret != SUCCESS)
 		goto error;
-
-	ret = XGpioPs_CfgInitialize(&xil_descriptor->instance,
-				    xil_descriptor->config, xil_descriptor->config->BaseAddr);
-	if (ret != 0)
-		goto error;
-#else
-	ret = XGpio_Initialize(&xil_descriptor->instance, 0);
-	if (ret != 0)
-		goto error;
-#endif
-
-	descriptor->number = gpio_number;
 
 	*desc = descriptor;
 
 	return SUCCESS;
-
 error:
+	free(extra);
 	free(descriptor);
 
 	return FAILURE;
@@ -109,8 +174,13 @@ error:
  */
 int32_t gpio_remove(struct gpio_desc *desc)
 {
+	xil_gpio_desc	*xdesc;
+
+	xdesc = desc->extra;
 	if (desc) {
-		// Unused variable - fix compiler warning
+		free(xdesc->instance);
+		free(desc->extra);
+		free(desc);
 	}
 
 	return SUCCESS;
@@ -123,8 +193,42 @@ int32_t gpio_remove(struct gpio_desc *desc)
  */
 int32_t gpio_direction_input(struct gpio_desc *desc)
 {
-	if (desc) {
-		// Unused variable - fix compiler warning
+	xil_gpio_desc	*extra;
+
+	extra = desc->extra;
+
+	switch (extra->type) {
+	case GPIO_PL:
+#ifdef XGPIO_H
+		uint32_t channel = 1;
+		uint32_t config	 = 0;
+
+		/* We assume that pin 32 is the first pin from channel 2 */
+		if (desc->number >= 32) {
+			channel = 2;
+			desc->number -= 32;
+		}
+
+		config = XGpio_GetDataDirection((XGpio *)desc->instance,
+						channel);
+		config &= ~(1 << desc->number);
+		XGpio_SetDataDirection((XGpio *)desc->instance,
+					channel,
+					config);
+#endif
+		break;
+	case GPIO_PS:
+#ifdef XGPIOPS_H
+		XGpioPs_SetDirectionPin(extra->instance,
+					desc->number,
+					GPIO_IN);
+		XGpioPs_SetOutputEnablePin(extra->instance,
+					desc->number,
+					GPIO_OUT);
+#endif
+		break;
+	default:
+		break;
 	}
 
 	return SUCCESS;
@@ -141,37 +245,56 @@ int32_t gpio_direction_input(struct gpio_desc *desc)
 int32_t gpio_direction_output(struct gpio_desc *desc,
 			      uint8_t value)
 {
-	xil_gpio_desc *xil_desc;
-	xil_desc = desc->extra;
+	xil_gpio_desc	*extra;
 
-#ifdef _XPARAMETERS_PS_H_
-	XGpioPs_SetDirectionPin(&xil_desc->instance, desc->number, 1);
+	extra = desc->extra;
 
-	XGpioPs_SetOutputEnablePin(&xil_desc->instance, desc->number, 1);
+	switch (extra->type) {
+	case GPIO_PL:
+#ifdef XGPIO_H
+		uint8_t pin = desc->number;
+		uint8_t channel;
+		uint32_t reg_val;
 
-	XGpioPs_WritePin(&xil_desc->instance, desc->number, value);
-#else
-	uint8_t pin = desc->number;
-	uint8_t channel;
-	uint32_t reg_val;
+		if (pin >= 32) {
+			channel = 2;
+			pin -= 32;
+		} else
+			channel = 1;
 
-	if (pin >= 32) {
-		channel = 2;
-		pin -= 32;
-	} else
-		channel = 1;
-
-	reg_val = XGpio_GetDataDirection(&xil_desc->instance, channel);
-	reg_val &= ~(1 << pin);
-	XGpio_SetDataDirection(&xil_desc->instance, channel, reg_val);
-
-	reg_val = XGpio_DiscreteRead(&xil_desc->instance, channel);
-	if(value)
-		reg_val |= (1 << pin);
-	else
+		reg_val = XGpio_GetDataDirection((XGpioPs *)desc->instance,
+						channel);
 		reg_val &= ~(1 << pin);
-	XGpio_DiscreteWrite(&xil_desc->instance, channel, reg_val);
+		XGpio_SetDataDirection((XGpioPs *)desc->instance,
+					channel,
+					reg_val);
+		reg_val = XGpio_DiscreteRead((XGpioPs *)desc->instance,
+					channel);
+		if(value)
+			reg_val |= (1 << pin);
+		else
+			reg_val &= ~(1 << pin);
+		XGpio_DiscreteWrite((XGpioPs *)desc->instance,
+				channel,
+				reg_val);
 #endif
+		break;
+	case GPIO_PS:
+#ifdef XGPIOPS_H
+		XGpioPs_SetDirectionPin(extra->instance,
+					desc->number,
+					GPIO_OUT);
+		XGpioPs_SetOutputEnablePin(extra->instance,
+					desc->number,
+					GPIO_OUT);
+		XGpioPs_WritePin(extra->instance,
+				desc->number,
+				value);
+#endif
+		break;
+	default:
+		break;
+	}
 
 	return SUCCESS;
 }
@@ -209,29 +332,39 @@ int32_t gpio_get_direction(struct gpio_desc *desc,
 int32_t gpio_set_value(struct gpio_desc *desc,
 		       uint8_t value)
 {
-	xil_gpio_desc *xil_desc;
-	xil_desc = desc->extra;
+	xil_gpio_desc	*extra;
 
-#ifdef _XPARAMETERS_PS_H_
-	XGpioPs_WritePin(&xil_desc->instance, desc->number, value);
-#else
-	uint8_t pin = desc->number;
-	uint8_t channel;
-	uint32_t reg_val;
+	extra = desc->extra;
 
-	if (pin >= 32) {
-		channel = 2;
-		pin -= 32;
-	} else
-		channel = 1;
+	switch (extra->type) {
+	case GPIO_PL:
+#ifdef XGPIO_H
+		uint8_t pin = desc->number;
+		uint8_t channel;
+		uint32_t reg_val;
 
-	reg_val = XGpio_DiscreteRead(&xil_desc->instance, channel);
-	if(value)
-		reg_val |= (1 << pin);
-	else
-		reg_val &= ~(1 << pin);
-	XGpio_DiscreteWrite(&xil_desc->instance, channel, reg_val);
+		if (pin >= 32) {
+			channel = 2;
+			pin -= 32;
+		} else
+			channel = 1;
+
+		reg_val = XGpio_DiscreteRead((XGpio *)desc->instance, channel);
+		if(value)
+			reg_val |= (1 << pin);
+		else
+			reg_val &= ~(1 << pin);
+		XGpio_DiscreteWrite((XGpio *)desc->instance, channel, reg_val);
 #endif
+		break;
+	case GPIO_PS:
+#ifdef XGPIOPS_H
+		XGpioPs_WritePin(extra->instance, desc->number, value);
+#endif
+		break;
+	default:
+		break;
+	}
 
 	return SUCCESS;
 }

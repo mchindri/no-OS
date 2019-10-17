@@ -1,6 +1,7 @@
-/***************************************************************************//**
- *   @file   gpio.h
- *   @author DBogdan (dragos.bogdan@analog.com)
+/*******************************************************************************
+ *   @file   gpio_extra.h
+ *   @brief  Header containing extra types used in the gpio driver
+ *   @author scuciurean (sergiu.cuciurean@analog.com)
 ********************************************************************************
  * Copyright 2019(c) Analog Devices, Inc.
  *
@@ -36,67 +37,35 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *******************************************************************************/
 
-#ifndef GPIO_H_
-#define GPIO_H_
+#ifndef GPIO_EXTRA_H_
+#define GPIO_EXTRA_H_
 
 /******************************************************************************/
 /***************************** Include Files **********************************/
 /******************************************************************************/
 
 #include <stdint.h>
-
-/******************************************************************************/
-/********************** Macros and Constants Definitions **********************/
-/******************************************************************************/
-
-#define GPIO_OUT	0x01
-#define GPIO_IN		0x00
-
-#define GPIO_HIGH	0x01
-#define GPIO_LOW	0x00
+#include <stdbool.h>
 
 /******************************************************************************/
 /*************************** Types Declarations *******************************/
 /******************************************************************************/
 
-typedef struct gpio_desc {
-	uint8_t		number;
-	void		*extra;
-} gpio_desc;
+typedef enum xil_gpio_type{
+	GPIO_PL,
+	GPIO_PS
+} xil_gpio_type;
 
-typedef struct gpio_init_param {
-	uint8_t	number;
-	void	*extra;
-} gpio_init_param;
+typedef struct xil_gpio_init{
+	enum xil_gpio_type	type;
+	uint32_t		device_id;
+} xil_gpio_init;
 
-/******************************************************************************/
-/************************ Functions Declarations ******************************/
-/******************************************************************************/
+typedef struct xil_gpio_desc{
+	enum xil_gpio_type	type;
+	void			*config;
+	void			*instance;
+	bool			initialized;
+} xil_gpio_desc;
 
-/* Obtain the GPIO decriptor. */
-int32_t gpio_get(struct gpio_desc **desc,
-		 struct gpio_init_param *init_param);
-
-/* Free the resources allocated by gpio_get() */
-int32_t gpio_remove(struct gpio_desc *desc);
-
-/* Enable the input direction of the specified GPIO. */
-int32_t gpio_direction_input(struct gpio_desc *desc);
-
-/* Enable the output direction of the specified GPIO. */
-int32_t gpio_direction_output(struct gpio_desc *desc,
-			      uint8_t value);
-
-/* Get the direction of the specified GPIO. */
-int32_t gpio_get_direction(struct gpio_desc *desc,
-			   uint8_t *direction);
-
-/* Set the value of the specified GPIO. */
-int32_t gpio_set_value(struct gpio_desc *desc,
-		       uint8_t value);
-
-/* Get the value of the specified GPIO. */
-int32_t gpio_get_value(struct gpio_desc *desc,
-		       uint8_t *value);
-
-#endif // GPIO_H_
+#endif
