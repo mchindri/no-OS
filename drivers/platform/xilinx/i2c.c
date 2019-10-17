@@ -44,10 +44,11 @@
 #include <stdlib.h>
 
 #include <xil_exception.h>
-#ifdef XIIC_H
+#include <xparameters.h>
+#ifdef XPAR_XIIC_NUM_INSTANCES
 #include <xiic.h>
 #endif
-#ifdef XIICPS_H
+#ifdef XPAR_XIICPS_NUM_INSTANCES
 #include <xiicps.h>
 #endif
 

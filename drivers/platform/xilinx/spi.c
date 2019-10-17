@@ -43,10 +43,11 @@
 
 #include <stdlib.h>
 
-#ifdef XSPI_H
+#include <xparameters.h>
+#ifdef XPAR_XSPI_NUM_INSTANCES
 #include <xspi.h>
 #endif
-#ifdef XSPIPS_H
+#ifdef XPAR_XSPIPS_NUM_INSTANCES
 #include <xspips.h>
 #endif
 

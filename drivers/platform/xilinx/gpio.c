@@ -44,10 +44,10 @@
 #include <stdlib.h>
 
 #include <xparameters.h>
-#ifdef XGPIO_H
+#ifdef XPAR_XGPIO_NUM_INSTANCES
 #include <xgpio.h>
 #endif
-#ifdef XGPIOPS_H
+#ifdef XPAR_XGPIOPS_NUM_INSTANCES
 #include <xgpiops.h>
 #endif
 
