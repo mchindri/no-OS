@@ -235,7 +235,7 @@ int32_t list_init(struct list_desc **list_desc, enum adapter_type type,
 	return SUCCESS;
 }
 
-int32_t	list_remove(struct list_desc *list_desc)
+int32_t list_remove(struct list_desc *list_desc)
 {
 	void			*data;
 	struct _list_desc	*list;
@@ -428,7 +428,7 @@ int32_t list_edit_find(struct list_desc *list_desc, void *new_data,
 	return iterator_edit(&(list->l_it), new_data);
 }
 
-void*	list_read_first(struct list_desc *list_desc, int32_t *result)
+void* list_read_first(struct list_desc *list_desc, int32_t *result)
 {
 	struct _list_desc	*list;
 
@@ -444,7 +444,7 @@ void*	list_read_first(struct list_desc *list_desc, int32_t *result)
 	return list->first->data;
 }
 
-void*	list_read_last(struct list_desc *list_desc, int32_t *result)
+void* list_read_last(struct list_desc *list_desc, int32_t *result)
 {
 	struct _list_desc	*list;
 
@@ -460,8 +460,8 @@ void*	list_read_last(struct list_desc *list_desc, int32_t *result)
 	return (list->last->data);
 }
 
-void*	list_read_idx(struct list_desc *list_desc, int32_t *result,
-		      uint32_t idx)
+void* list_read_idx(struct list_desc *list_desc, int32_t *result,
+		    uint32_t idx)
 {
 	struct _list_desc	*list;
 
@@ -483,8 +483,8 @@ void*	list_read_idx(struct list_desc *list_desc, int32_t *result,
 	return iterator_read(&(list->l_it), result);
 }
 
-void*	list_read_find(struct list_desc *list_desc, int32_t *result,
-		       void *cmp_data)
+void* list_read_find(struct list_desc *list_desc, int32_t *result,
+		     void *cmp_data)
 {
 	struct _list_desc	*list;
 
@@ -500,7 +500,7 @@ void*	list_read_find(struct list_desc *list_desc, int32_t *result,
 	return iterator_read(&(list->l_it), result);
 }
 
-void*	list_get_first(struct list_desc *list_desc, int32_t *result)
+void* list_get_first(struct list_desc *list_desc, int32_t *result)
 {
 	struct list_elem 	*prev;
 	struct list_elem 	*next;
@@ -531,7 +531,7 @@ void*	list_get_first(struct list_desc *list_desc, int32_t *result)
 	return (data);
 }
 
-void*	list_get_last(struct list_desc *list_desc, int32_t *result)
+void* list_get_last(struct list_desc *list_desc, int32_t *result)
 {
 	struct list_elem 	*prev;
 	struct list_elem	 *next;
@@ -562,7 +562,7 @@ void*	list_get_last(struct list_desc *list_desc, int32_t *result)
 	return (data);
 }
 
-void*	list_get_idx(struct list_desc *list_desc, int32_t *result, uint32_t idx)
+void* list_get_idx(struct list_desc *list_desc, int32_t *result, uint32_t idx)
 {
 	struct _list_desc	*list;
 
@@ -578,8 +578,8 @@ void*	list_get_idx(struct list_desc *list_desc, int32_t *result, uint32_t idx)
 	return iterator_get(&(list->l_it), result);
 }
 
-void*	list_get_find(struct list_desc *list_desc, int32_t *result,
-		      void *cmp_data)
+void* list_get_find(struct list_desc *list_desc, int32_t *result,
+		    void *cmp_data)
 {
 	struct _list_desc	*list;
 
@@ -627,7 +627,7 @@ int32_t iterator_remove(struct iterator *iter)
 	return SUCCESS;
 }
 
-int32_t	iterator_move(struct iterator *iter, int32_t idx)
+int32_t iterator_move(struct iterator *iter, int32_t idx)
 {
 	struct iterator		*it = iter;
 	struct list_elem	*elem;
@@ -650,7 +650,7 @@ int32_t	iterator_move(struct iterator *iter, int32_t idx)
 	return SUCCESS;
 }
 
-int32_t	iterator_find(struct iterator *iter, void *cmp_data)
+int32_t iterator_find(struct iterator *iter, void *cmp_data)
 {
 	struct iterator		*it = iter;
 	struct list_elem	*elem;
@@ -670,7 +670,7 @@ int32_t	iterator_find(struct iterator *iter, void *cmp_data)
 	return FAILURE;
 }
 
-int32_t	iterator_edit(struct iterator *iter, void *new_data)
+int32_t iterator_edit(struct iterator *iter, void *new_data)
 {
 	struct iterator *it = iter;
 
@@ -682,7 +682,7 @@ int32_t	iterator_edit(struct iterator *iter, void *new_data)
 	return SUCCESS;
 }
 
-void*	iterator_get(struct iterator *iter, int32_t *result)
+void* iterator_get(struct iterator *iter, int32_t *result)
 {
 	struct iterator		*it = iter;
 	struct list_elem	*next;
@@ -713,7 +713,7 @@ void*	iterator_get(struct iterator *iter, int32_t *result)
 	return data;
 }
 
-void*	iterator_read(struct iterator *iter, int32_t *result)
+void* iterator_read(struct iterator *iter, int32_t *result)
 {
 	struct iterator *it = iter;
 
@@ -727,7 +727,7 @@ void*	iterator_read(struct iterator *iter, int32_t *result)
 	return (it->elem->data);
 }
 
-int32_t	iterator_insert(struct iterator *iter, void *data, bool after)
+int32_t iterator_insert(struct iterator *iter, void *data, bool after)
 {
 	struct iterator		*it = iter;
 	struct list_elem	*elem;
