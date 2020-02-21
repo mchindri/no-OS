@@ -99,6 +99,17 @@ static int32_t default_comparator(void *data1, void *data2)
 }
 
 /**
+ * @brief Set parameter if not null
+ * @param res - Where to store val
+ * @param val - Value to be set
+ */
+static inline void set_result(int32_t *res, int32_t val)
+{
+	if (res)
+		*res = val;
+}
+
+/**
  * @brief Creates a new list elements an configure its value
  * @param data - To set list_elem.data
  * @param prev - To set list_elem.prev
@@ -195,16 +206,6 @@ static inline void set_adapter(struct list_desc *ad, enum adapter_type type)
 	}
 }
 
-/**
- * @brief Create a new empty list
- * @param list_desc - Where to store the reference of the new created list
- * @param type - Type of adapter to use.
- * @param comparator - Used to compare item when using an ordered list or when
- * using the \em find functions.
- * @return
- *  - \ref SUCCESS : On success
- *  - \ref FAILURE : Otherwise
- */
 int32_t list_init(struct list_desc **list_desc, enum adapter_type type,
 		  f_cmp comparator)
 {
@@ -234,17 +235,7 @@ int32_t list_init(struct list_desc **list_desc, enum adapter_type type,
 	return SUCCESS;
 }
 
-/**
- * @brief Remove the created list.
- *
- * All its elements will be cleared and the data inside each will be lost. If
- * not all iterators have been removed, the list will not be removed.
- * @param list_desc - Reference to the list
- * @return
- *  - \ref SUCCESS : On success
- *  - \ref FAILURE : Otherwise
- */
-int32_t list_remove(struct list_desc *list_desc)
+int32_t	list_remove(struct list_desc *list_desc)
 {
 	void			*data;
 	struct _list_desc	*list;
@@ -257,22 +248,15 @@ int32_t list_remove(struct list_desc *list_desc)
 		return FAILURE;
 
 	/* Remove all the elements */
-	while (SUCCESS == list_get_first(list_desc, &data))
-		;
+	data = list_get_first(list_desc, NULL);
+	while (data)
+		data = list_get_first(list_desc, NULL);
 	free(list_desc->priv_desc);
 	free(list_desc);
 
 	return SUCCESS;
 }
 
-/**
- * @brief Get the number of elements inside the list
- * @param list_desc - List reference
- * @param out_size - Where to store the number of elements
- * @return
- *  - \ref SUCCESS : On success
- *  - \ref FAILURE : Otherwise
- */
 int32_t list_get_size(struct list_desc *list_desc, uint32_t *out_size)
 {
 	struct _list_desc	*list;
@@ -286,7 +270,6 @@ int32_t list_get_size(struct list_desc *list_desc, uint32_t *out_size)
 	return SUCCESS;
 }
 
-/** @brief Add element at the begining of the list. Refer to \ref f_add */
 int32_t list_add_first(struct list_desc *list_desc, void *data)
 {
 	struct list_elem	*prev;
@@ -314,7 +297,6 @@ int32_t list_add_first(struct list_desc *list_desc, void *data)
 	return SUCCESS;
 }
 
-/** @brief Add element at the end of the list. Refer to \ref f_add */
 int32_t list_add_last(struct list_desc *list_desc, void *data)
 {
 	struct list_elem	*prev;
@@ -341,7 +323,6 @@ int32_t list_add_last(struct list_desc *list_desc, void *data)
 	return SUCCESS;
 }
 
-/** @brief Add element at the specified idx. Refer to \ref f_add */
 int32_t list_add_idx(struct list_desc *list_desc, void *data, uint32_t idx)
 {
 	struct _list_desc	*list;
@@ -363,7 +344,6 @@ int32_t list_add_idx(struct list_desc *list_desc, void *data, uint32_t idx)
 	return iterator_insert(&(list->l_it), data, 0);
 }
 
-/** @brief Add element in ascending order. Refer to \ref f_add */
 int32_t list_add_find(struct list_desc *list_desc, void *data)
 {
 	struct list_elem	*elem;
@@ -377,7 +357,7 @@ int32_t list_add_find(struct list_desc *list_desc, void *data)
 	/* Based on place iterator */
 	elem = list->first;
 	while (elem) {
-		if (0 < list->comparator(elem->data, data))
+		if (0 > list->comparator(data, elem->data))
 			break;
 		elem = elem->next;
 	}
@@ -391,7 +371,6 @@ int32_t list_add_find(struct list_desc *list_desc, void *data)
 
 }
 
-/** @brief Edit the first element of the list. Refer to \ref f_edit */
 int32_t list_edit_first(struct list_desc *list_desc, void *new_data)
 {
 	struct _list_desc	*list;
@@ -405,7 +384,6 @@ int32_t list_edit_first(struct list_desc *list_desc, void *new_data)
 	return SUCCESS;
 }
 
-/** @brief Edit the last element of the list. Refer to \ref f_edit */
 int32_t list_edit_last(struct list_desc *list_desc, void *new_data)
 {
 	struct _list_desc	*list;
@@ -419,7 +397,6 @@ int32_t list_edit_last(struct list_desc *list_desc, void *new_data)
 	return SUCCESS;
 }
 
-/** @brief Edit the element at the specified idx. Refer to \ref f_edit */
 int32_t list_edit_idx(struct list_desc *list_desc, void *new_data, uint32_t idx)
 {
 	struct _list_desc	*list;
@@ -435,7 +412,6 @@ int32_t list_edit_idx(struct list_desc *list_desc, void *new_data, uint32_t idx)
 	return iterator_edit(&(list->l_it), new_data);
 }
 
-/** @brief Edit the element which match with cmp_data. Refer to \ref f_edit */
 int32_t list_edit_find(struct list_desc *list_desc, void *new_data,
 		       void *cmp_data)
 {
@@ -452,102 +428,93 @@ int32_t list_edit_find(struct list_desc *list_desc, void *new_data,
 	return iterator_edit(&(list->l_it), new_data);
 }
 
-/** @brief Read the first element of the list. Refer to \ref f_read */
-int32_t list_read_first(struct list_desc *list_desc, void **data)
+void*	list_read_first(struct list_desc *list_desc, int32_t *result)
 {
 	struct _list_desc	*list;
 
-	if (!list_desc || !data)
+	set_result(result, FAILURE);
+	if (!list_desc)
 		return FAILURE;
 
-	*data = NULL;
 	list = list_desc->priv_desc;
 	if (!list->first)
-		return FAILURE;
+		return NULL;
+	set_result(result, SUCCESS);
 
-	*data = list->first->data;
-
-	return SUCCESS;
+	return list->first->data;
 }
 
-/** @brief Read the last element of the list. Refer to \ref f_read */
-int32_t list_read_last(struct list_desc *list_desc, void **data)
+void*	list_read_last(struct list_desc *list_desc, int32_t *result)
 {
 	struct _list_desc	*list;
 
-	if (!list_desc || !data)
+	set_result(result, FAILURE);
+	if (!list_desc)
 		return FAILURE;
 
-	*data = NULL;
 	list = list_desc->priv_desc;
 	if (!list->last)
-		return FAILURE;
+		return NULL;
+	set_result(result, SUCCESS);
 
-	*data = list->last->data;
-
-	return SUCCESS;
+	return (list->last->data);
 }
 
-/** @brief Read the element at the specified idx. Refer to \ref f_read */
-int32_t list_read_idx(struct list_desc *list_desc, void **data, uint32_t idx)
+void*	list_read_idx(struct list_desc *list_desc, int32_t *result,
+		      uint32_t idx)
 {
 	struct _list_desc	*list;
 
-	if (!list_desc || !data)
+	set_result(result, FAILURE);
+	if (!list_desc)
 		return FAILURE;
 
-	*data = NULL;
 	list = list_desc->priv_desc;
 	if (!list)
-		return FAILURE;
+		return NULL;
 
 	if (idx >= list->nb_elements)
-		return FAILURE;
+		return NULL;
 
 	list->l_it.elem = list->first;
 	if (SUCCESS != iterator_move(&(list->l_it), idx))
-		return FAILURE;
+		return NULL;
 
-	return iterator_read(&(list->l_it), data);
+	return iterator_read(&(list->l_it), result);
 }
 
-/** @brief Read the element which match with cmp_data. Refer to \ref f_read */
-int32_t list_read_find(struct list_desc *list_desc, void **data,
+void*	list_read_find(struct list_desc *list_desc, int32_t *result,
 		       void *cmp_data)
 {
 	struct _list_desc	*list;
 
-	if (!list_desc || !data)
-		return FAILURE;
-
-	*data = NULL;
-	list = list_desc->priv_desc;
-	if (!list)
+	set_result(result, FAILURE);
+	if (!list_desc)
 		return FAILURE;
 
 	list = list_desc->priv_desc;
 	list->l_it.elem = list->first;
 	if (SUCCESS != iterator_find(&(list->l_it), cmp_data))
-		return FAILURE;
+		return NULL;
 
-	return iterator_read(&(list->l_it), data);
+	return iterator_read(&(list->l_it), result);
 }
 
-/** @brief Read and delete the first element of the list. Refer to \ref f_get */
-int32_t list_get_first(struct list_desc *list_desc, void **data)
+void*	list_get_first(struct list_desc *list_desc, int32_t *result)
 {
 	struct list_elem 	*prev;
 	struct list_elem 	*next;
 	struct list_elem 	*elem;
+	void		 	*data;
 	struct _list_desc	*list;
 
-	if (!list_desc || !data)
+	set_result(result, FAILURE);
+	if (!list_desc)
 		return FAILURE;
 
-	*data = NULL;
 	list = list_desc->priv_desc;
 	if (!list->nb_elements)
-		return FAILURE;
+		return NULL;
 
 	elem = list->first;
 	prev = elem->prev;
@@ -557,27 +524,28 @@ int32_t list_get_first(struct list_desc *list_desc, void **data)
 	update_desc(list, next, list->last);
 	list->nb_elements--;
 
-	*data = elem->data;
+	data = elem->data;
 	free(elem);
+	set_result(result, SUCCESS);
 
-	return SUCCESS;
+	return (data);
 }
 
-/** @brief Read and delete the last element of the list. Refer to \ref f_get */
-int32_t list_get_last(struct list_desc *list_desc, void **data)
+void*	list_get_last(struct list_desc *list_desc, int32_t *result)
 {
 	struct list_elem 	*prev;
 	struct list_elem	 *next;
 	struct list_elem 	*elem;
+	void		 	*data;
 	struct _list_desc	*list;
 
-	if (!list_desc || !data)
+	set_result(result, FAILURE);
+	if (!list_desc)
 		return FAILURE;
 
-	*data = NULL;
 	list = list_desc->priv_desc;
 	if (!list->nb_elements)
-		return FAILURE;
+		return NULL;
 
 	elem = list->last;
 	prev = elem->prev;
@@ -587,59 +555,46 @@ int32_t list_get_last(struct list_desc *list_desc, void **data)
 	update_desc(list, list->first, prev);
 	list->nb_elements--;
 
-	*data = elem->data;
+	data = elem->data;
 	free(elem);
+	set_result(result, SUCCESS);
 
-	return SUCCESS;
+	return (data);
 }
 
-/** @brief Read and delete the element at idx. Refer to \ref f_get */
-int32_t list_get_idx(struct list_desc *list_desc, void **data, uint32_t idx)
+void*	list_get_idx(struct list_desc *list_desc, int32_t *result, uint32_t idx)
 {
 	struct _list_desc	*list;
 
-	if (!list_desc || !data)
+	set_result(result, FAILURE);
+	if (!list_desc)
 		return FAILURE;
 
-	*data = NULL;
 	list = list_desc->priv_desc;
 	list->l_it.elem = list->first;
 	if (SUCCESS != iterator_move(&(list->l_it), idx))
-		return FAILURE;
+		return NULL;
 
-	return iterator_get(&(list->l_it), data);
+	return iterator_get(&(list->l_it), result);
 }
 
-/**
- * @brief Read and delete the element which match with cmp_data.
- * Refer to \ref f_get
- */
-int32_t list_get_find(struct list_desc *list_desc, void **data, void *cmp_data)
+void*	list_get_find(struct list_desc *list_desc, int32_t *result,
+		      void *cmp_data)
 {
 	struct _list_desc	*list;
 
-	if (!list_desc || !data)
+	set_result(result, FAILURE);
+	if (!list_desc)
 		return FAILURE;
 
-	*data = NULL;
 	list = list_desc->priv_desc;
 	list->l_it.elem = list->first;
 	if (SUCCESS != iterator_find(&(list->l_it), cmp_data))
-		return FAILURE;
+		return NULL;
 
-	return iterator_get(&(list->l_it), data);
+	return iterator_get(&(list->l_it), result);
 }
 
-/**
- * @brief Create a new iterator
- * @param iter - Where to store the reference for the new iterator
- * @param list_desc - Reference of the list the iterator will be used for
- * @param start - If it is true the iterator will be positioned at the first
- * element of the list, else it will be positioned at the last.
- * @return
- *  - \ref SUCCESS : On success
- *  - \ref FAILURE : Otherwise
- */
 int32_t iterator_init(struct iterator **iter, struct list_desc *list_desc,
 		      bool start)
 {
@@ -659,13 +614,6 @@ int32_t iterator_init(struct iterator **iter, struct list_desc *list_desc,
 	return SUCCESS;
 }
 
-/**
- * @brief Remove the created iterator
- * @param iter - Reference of the iterator
- * @return
- *  - \ref SUCCESS : On success
- *  - \ref FAILURE : Otherwise
- */
 int32_t iterator_remove(struct iterator *iter)
 {
 	struct iterator *it = iter;
@@ -679,19 +627,7 @@ int32_t iterator_remove(struct iterator *iter)
 	return SUCCESS;
 }
 
-/**
- * @brief Move the position of the iteration through the list.
- *
- * If the required position is outside the list, the call will fail and the
- * iterator will keep its position.
- * @param iter - Reference of the iterator
- * @param idx - Number of positions to be move. If positive, it will be moved
- * forward, otherwise backwords.
- * @return
- *  - \ref SUCCESS : On success
- *  - \ref FAILURE : Otherwise
- */
-int32_t iterator_move(struct iterator *iter, int32_t idx)
+int32_t	iterator_move(struct iterator *iter, int32_t idx)
 {
 	struct iterator		*it = iter;
 	struct list_elem	*elem;
@@ -714,15 +650,7 @@ int32_t iterator_move(struct iterator *iter, int32_t idx)
 	return SUCCESS;
 }
 
-/**
- * @brief Place the iterator where cmp_data if found.
- * @param iter - Reference to the iterator
- * @param cmp_data - Data to be found
- * @return
- *  - \ref SUCCESS : On success
- *  - \ref FAILURE : Otherwise
- */
-int32_t iterator_find(struct iterator *iter, void *cmp_data)
+int32_t	iterator_find(struct iterator *iter, void *cmp_data)
 {
 	struct iterator		*it = iter;
 	struct list_elem	*elem;
@@ -742,10 +670,7 @@ int32_t iterator_find(struct iterator *iter, void *cmp_data)
 	return FAILURE;
 }
 
-/**
- * @brief Replace the data at the current position. Refer to \ref f_edit
- */
-int32_t iterator_edit(struct iterator *iter, void *new_data)
+int32_t	iterator_edit(struct iterator *iter, void *new_data)
 {
 	struct iterator *it = iter;
 
@@ -757,20 +682,17 @@ int32_t iterator_edit(struct iterator *iter, void *new_data)
 	return SUCCESS;
 }
 
-/**
- * @brief Read and remove the data at the current position. Refer to \ref f_get.
- *
- * If the current item is the last one, the iterator will be moved to the
- * previous one.
- */
-int32_t iterator_get(struct iterator *iter, void **data)
+void*	iterator_get(struct iterator *iter, int32_t *result)
 {
 	struct iterator		*it = iter;
 	struct list_elem	*next;
+	void			*data;
 
 
-	if (!it || !it->elem || !data)
-		return FAILURE;
+	if (!it || !it->elem) {
+		set_result(result, FAILURE);
+		return NULL;
+	}
 
 	update_links(it->elem->prev, NULL, it->elem->next);
 	if (it->elem == it->list->first)
@@ -779,40 +701,33 @@ int32_t iterator_get(struct iterator *iter, void **data)
 		update_desc(it->list, it->list->first, it->elem->prev);
 	it->list->nb_elements--;
 
-	*data = it->elem->data;
+	data = it->elem->data;
 	if (it->elem == it->list->last)
 		next = it->elem->prev;
 	else
 		next = it->elem->next;
 	free(it->elem);
 	it->elem = next;
+	set_result(result, SUCCESS);
 
-	return SUCCESS;
+	return data;
 }
 
-/**
- * @brief Read the data at the current position. Refer to \ref f_read
- */
-int32_t iterator_read(struct iterator *iter, void **data)
+void*	iterator_read(struct iterator *iter, int32_t *result)
 {
 	struct iterator *it = iter;
 
-	if (!it || !it->elem || !data)
-		return FAILURE;
 
-	*data = it->elem->data;
+	if (!it || !it->elem) {
+		set_result(result, FAILURE);
+		return NULL;
+	}
+	set_result(result, SUCCESS);
 
-	return SUCCESS;
+	return (it->elem->data);
 }
 
-/**
- * @brief Insert an item in the list. Refer to \ref f_add
- * @param iter
- * @param data
- * @param after - If true, the item will be inserted after the current position.
- * Otherwise it will be inserted before.
- */
-int32_t iterator_insert(struct iterator *iter, void *data, bool after)
+int32_t	iterator_insert(struct iterator *iter, void *data, bool after)
 {
 	struct iterator		*it = iter;
 	struct list_elem	*elem;
