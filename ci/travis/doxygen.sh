@@ -36,7 +36,7 @@ then
         then
                 git add --all .
                 git commit --allow-empty --amend -m "Update documentation to ${TRAVIS_COMMIT:0:7}"
-                git push https://${GITHUB_DOC_TOKEN}@github.com/${TRAVIS_REPO_SLUG} gh-pages -f &>/dev/null
+                git push https://mchindri:${GH_TOKEN}@github.com/${TRAVIS_REPO_SLUG} gh-pages -f &>/dev/null
 
                 echo_green "Documetation updated!"
         else
