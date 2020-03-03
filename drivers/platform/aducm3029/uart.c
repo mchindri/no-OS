@@ -251,7 +251,9 @@ static void uart_callback(void *ctx, uint32_t event, void *buff)
 					       NULL);
 		}
 		break;
-	default:
+	default: //Error
+		extra->waiting_read_callback = 0;
+		extra->waiting_write_callback = 0;
 		extra->errors |= (uint32_t)buff;
 		extra->read_desc.is_nonblocking = false;
 		extra->write_desc.is_nonblocking = false;
@@ -271,6 +273,7 @@ static void uart_callback(void *ctx, uint32_t event, void *buff)
 int32_t uart_read(struct uart_desc *desc, uint8_t *data,
 		  uint32_t bytes_number)
 {
+	/* TODO Improve to read more than 1024 chars */
 	uint32_t errors;
 	struct aducm_uart_desc *extra;
 
