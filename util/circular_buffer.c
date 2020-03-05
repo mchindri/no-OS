@@ -76,15 +76,6 @@ struct circular_buffer {
 /************************ Functions Definitions *******************************/
 /******************************************************************************/
 
-/**
- * @brief Create circular buffer structure
- * @param desc - Where to store the circular buffer reference
- * @param nb_elements - Number of elements for the buffer
- * @param element_size - Size of an element in the buffer
- * @return
- *  - \ref SUCCESS : On success
- *  - \ref FAILURE : Otherwise
- */
 int32_t cb_init(struct circular_buffer **desc, uint32_t nb_elements,
 		uint32_t element_size)
 {
@@ -119,13 +110,6 @@ int32_t cb_init(struct circular_buffer **desc, uint32_t nb_elements,
 	return SUCCESS;
 }
 
-/**
- * @brief Free the resources allocated for the circular buffer structure
- * @param desc - Circular buffer reference
- * @return
- *  - \ref SUCCESS : On success
- *  - \ref FAILURE : Otherwise
- */
 int32_t cb_remove(struct circular_buffer *desc)
 {
 	if (!desc)
@@ -138,14 +122,6 @@ int32_t cb_remove(struct circular_buffer *desc)
 	return SUCCESS;
 }
 
-/**
- * @brief Get the number of elements in the buffer
- * @param desc - Circular buffer reference
- * @param nb_elements - Where to store the number of elements
- * @return
- *  - \ref SUCCESS : On success
- *  - \ref FAILURE : Otherwise
- */
 int32_t cb_size(struct circular_buffer *desc, uint32_t *nb_elements)
 {
 	if (!desc)
@@ -156,15 +132,6 @@ int32_t cb_size(struct circular_buffer *desc, uint32_t *nb_elements)
 	return SUCCESS;
 }
 
-/**
- * @brief Write data to the buffer
- * @param desc - Circular buffer reference
- * @param data - Buffer from where data is copied to the circular buffer
- * @param nb_elements - Number of elements to be copied
- * @return
- *  - \ref SUCCESS : On success
- *  - \ref FAILURE : If overflow, if nb_elements == 0 or if desc is NULL
- */
 int32_t cb_write(struct circular_buffer *desc, const void *data,
 		 uint32_t nb_elements)
 {
@@ -205,15 +172,7 @@ int32_t cb_write(struct circular_buffer *desc, const void *data,
 	return ret;
 }
 
-/**
- * @brief Read data from the buffer
- * @param desc - Circular buffer reference
- * @param data - Buffer where to data is copied from the circular buffer
- * @param nb_elements - Number of elements to be copied
- * @return
- *  - \ref SUCCESS : On success
- *  - \ref FAILURE : If not enaught data available in the buffer
- */
+
 int32_t cb_read(struct circular_buffer *desc, void *data,
 		uint32_t nb_elements)
 {
