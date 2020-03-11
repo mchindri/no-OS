@@ -45,6 +45,58 @@
 /******************************************************************************/
 
 #include <stdint.h>
+#include <stdbool.h>
+#include "util.h"
+
+#define START_TIMER(timer, out_is_timeout) \
+	{\
+		if (out_is_timeout)\
+			*out_is_timeout = false;\
+		timer_counter_set(timer, 0);\
+		timer_start(timer);\
+	}
+
+#define STOP_TIMER(timer) {timer_stop(timer);}
+
+#define CHECK_TIMER(timer, timeout, out_is_timeout) \
+	{\
+		uint32_t counter;\
+		timer_counter_get(timer, &counter);\
+		if (counter > timeout) {\
+			if (out_is_timeout)\
+				*out_is_timeout = true;\
+			break;\
+		}\
+	}
+
+/**
+ *  @brief Macro to implement user code in loop with timeout
+ *
+ *  Let the user define a code to be executed in a loop for a certain amount of
+ *  time given by timeout. It is used the current user scope.
+ *  The parameter types should be:
+ *   - struct timer_desc *timer
+ *   - uint32_t timeout
+ *   - bool *out_is_timeout
+ *   Example:
+ *   @code{.c}
+ *   bool is_timeout;
+ *   char ch;
+ *   LOOP_TIMEOUT(timer_desc, 10, &is_timeout) {
+ *   	ch = read_uart();
+ *   	if (ch == '\n');
+ *   		break;
+ *   }
+ *   if (is_timeout)
+ *   	return FAILURE;
+ *   return SUCCESS;
+ *   @endcode
+ */
+#define LOOP_TIMEOUT(timer, timeout, out_is_timeout) \
+		ENCAPSULATED_WHILE(\
+			START_TIMER((timer), (out_is_timeout)),\
+			STOP_TIMER(timer),\
+			CHECK_TIMER((timer), (timeout), (out_is_timeout)))
 
 /******************************************************************************/
 /*************************** Types Declarations *******************************/

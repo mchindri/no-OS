@@ -102,6 +102,27 @@
 #define DIV_U64(x, y) (x / y)
 
 #define UNUSED_PARAM(x) ((void)x)
+/*
+ *  Enable the user to create a while and the operations before and after user
+ *  code to defined.
+ *  Inspired from https://www.chiark.greenend.org.uk/~sgtatham/mp/
+ */
+#define ENCAPSULATED_WHILE(BEFOR_WHILE, AFTER_WHILE, IN_WHILE_BEFORE_CODE) \
+	if (1) {\
+		BEFOR_WHILE\
+		goto body;\
+	}\
+	else while (1)\
+		if (1) {\
+			AFTER_WHILE\
+			break;\
+		} else while (1)\
+			if (1) {\
+				IN_WHILE_BEFORE_CODE\
+				goto body;\
+			}\
+			else\
+			    body://Here will be user code
 
 /******************************************************************************/
 /************************ Functions Declarations ******************************/
