@@ -501,6 +501,9 @@ int32_t at_run_cmd(struct at_desc *desc, enum at_cmd cmd, enum cmd_operation op,
 	if (!(g_map[cmd].type & op))
 		return FAILURE;
 
+	if (desc->unvarnished_mode)
+		return FAILURE;
+
 	build_cmd(desc, cmd, op, param);
 
 	if (cmd == AT_DEEP_SLEEP || cmd == AT_RESET)
@@ -544,6 +547,44 @@ int32_t at_run_cmd(struct at_desc *desc, enum at_cmd cmd, enum cmd_operation op,
 	return SUCCESS;
 }
 
+int32_t enter_unvernished_mode(struct at_desc *desc)
+{
+	if (desc->multiple_conections
+			|| desc->connections[0].type != SOCKET_TCP
+			|| !desc->connections[0].active)
+		return FAILURE;
+
+	union in_out_param param;
+
+	param.in.transport_mode = UNVARNISHED_MODE;
+	build_cmd(desc, AT_SEND, AT_EXECUTE_OP, &param);
+	desc->waiting_send = true;
+	write_cmd(desc);
+	while (desc->waiting_send)
+		;
+
+	desc->unvarnished_mode = true;
+
+	return SUCCESS;
+}
+
+int32_t send_unvarnished(struct at_desc *desc, const struct at_buff *msg)
+{
+	//iF MSG->LEN > 2048 -> todo SPLIT packages ??
+
+	uart_write(desc->uart_desc, msg->buff, msg->len);
+
+	return SUCCESS;
+}
+
+int32_t exit_unvernished_mode(struct at_desc *desc)
+{
+	const static struct at_buff end_cmd = {USTR("+++"), 3};
+	uart_write(desc->uart_desc, end_cmd.buff, end_cmd.len);
+
+	desc->unvarnished_mode = false;
+	return SUCCESS;
+}
 
 struct aducm_uart_init_param aducm_param = {
 		.parity = UART_NO_PARITY,
@@ -584,8 +625,6 @@ int32_t at_init(struct at_desc **desc, struct at_init_param *param)
 	if (SUCCESS != timer_init(&(ldesc->timer), &timer_param))
 		goto free_uart;
 
-	ldesc->received_package.buff = param->read_buff;
-	ldesc->received_package.len = param->buff_size;
 	/* Link buffer structure with static buffers */
 	ldesc->app_response.buff = ldesc->buffers.app_response_buff;
 	ldesc->app_response.len = 0;
@@ -638,17 +677,19 @@ int32_t at_remove(struct at_desc *desc)
 }
 
 /* Fill the at_buff structure from null terminated string */
-void	str_to_at(struct at_buff *dest, uint8_t *src)
+struct at_buff	*str_to_at(struct at_buff *dest, uint8_t *src)
 {
 	if (!dest || !src)
-		return ;
+		return NULL;
 
 	dest->buff = (uint8_t *)src;
 	dest->len = strlen((char *)src);
+
+	return dest;
 }
 
 /* Return Null terminated string from at_buff structure */
-uint8_t	*at_to_str(struct at_buff *src)
+uint8_t		*at_to_str(struct at_buff *src)
 {
 	if (!src)
 		return NULL;

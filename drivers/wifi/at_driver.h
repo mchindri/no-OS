@@ -14,6 +14,11 @@
 #define NB_RESPONSES 4
 #define MAX_CONNECTIONS 4
 
+
+#define CMD_BUFF_LEN	2000u //? Is enaught
+#define RESULT_BUFF_LEN	2000u //? To think about this
+
+
 /* TODO */
 //#define PARSE_RESULT
 
@@ -149,9 +154,6 @@ union in_out_param {
 	union in_param	in;
 };
 
-#define CMD_BUFF_LEN	2000u //? Is enaught
-#define RESULT_BUFF_LEN	2000u //? To think about this
-
 /** If ok on list, move descriptor to .c file */
 struct at_desc {
 	/** Buffers */
@@ -181,6 +183,8 @@ struct at_desc {
 	volatile bool		waiting_send;
 	/** Event used when reading payload */
 	volatile bool		ipd_received;
+	/** Unvarnished mode active or not */
+	bool			unvarnished_mode;
 	/** Indexes for in the possibles response given by the driver */
 	uint32_t		match_idx[NB_RESPONSES];
 	/** Timer handler */
@@ -212,15 +216,18 @@ int32_t get_last_message(struct at_desc *desc, struct at_buff *msg);
 int32_t at_run_cmd(struct at_desc *desc, enum at_cmd cmd, enum cmd_operation op,
 			union in_out_param *param);
 
-/** Convert null terminated string to at_buff */
-void	str_to_at(struct at_buff *dest, uint8_t *src);
-/** Convert at_buff to null terminated string */
-uint8_t	*at_to_str(struct at_buff *src);
+int32_t enter_unvernished_mode(struct at_desc *desc);
+int32_t send_unvarnished(struct at_desc *desc, const struct at_buff *msg);
+int32_t exit_unvernished_mode(struct at_desc *desc);
 
-// TODO
-/*
-void enter_unvernished_mode();
-void send_unvarnished();
-void exit_unvernished_mode();
-*/
+/** Convert null terminated string to at_buff */
+struct at_buff	*str_to_at(struct at_buff *dest, uint8_t *src);
+/** Convert at_buff to null terminated string */
+uint8_t		*at_to_str(struct at_buff *src);
+
+/** TODO :
+ * Circular buffer for user buffer and for read buffer
+ * Create user callback
+ */
+
 #endif
