@@ -14,8 +14,12 @@
 #define NB_RESPONSES 4
 #define MAX_CONNECTIONS 4
 
-
-#define CMD_BUFF_LEN	2000u //? Is enaught
+/*
+ * Max comanda len: at+cwsap=max_ssid_32,max_pass_64,0,0 -> 110
+ * Will use 120 to be safe. The payload will be sent from the user buffer.
+ * Should be fine for ping too
+ */
+#define CMD_BUFF_LEN	120u
 #define RESULT_BUFF_LEN	2000u //? To think about this
 
 
@@ -158,7 +162,7 @@ union in_out_param {
 struct at_desc {
 	/** Buffers */
 	struct {
-		uint8_t	app_response_buff[RESULT_BUFF_LEN];
+		uint8_t app_response_buff[RESULT_BUFF_LEN];
 		uint8_t	result_buff[RESULT_BUFF_LEN];
 		uint8_t	cmd_buff[CMD_BUFF_LEN];
 	} 			buffers;
@@ -187,8 +191,6 @@ struct at_desc {
 	bool			unvarnished_mode;
 	/** Indexes for in the possibles response given by the driver */
 	uint32_t		match_idx[NB_RESPONSES];
-	/** Timer handler */
-	struct timer_desc	*timer;
 	/** UART handler */
 	struct uart_desc	*uart_desc;
 	/** Structure used to store the connection statuses */

@@ -148,14 +148,14 @@ static inline void refresh_status(struct at_desc *desc)
 static inline void wait_for_response(struct at_desc *desc)
 {
 	uint32_t counter;
+	uint32_t timeout;
 
-	timer_start(desc->timer);
+	timeout = MODULE_TIMEOUT;
 	do {
 		if (desc->result_status != WAITING_RESULT)
 			break;
-		timer_counter_get(desc->timer, &counter);
-	} while (counter < MODULE_TIMEOUT);
-	timer_stop(desc->timer);
+		mdelay(1);
+	} while (timeout--);
 }
 
 /*
@@ -305,7 +305,8 @@ static void	build_cmd_param(struct at_desc *desc, enum at_cmd id,
 		break;
 
 	case AT_CONNECT_NETWORK:
-		at_sprintf(&desc->app_response, USTR("ss"), &param->network.ssid,
+		at_sprintf(&desc->app_response, USTR("ss"),
+				&param->network.ssid,
 				&param->network.pwd);
 		break;
 	case AT_SET_ACCESS_POINT:
@@ -493,7 +494,8 @@ static int32_t	parse_result(struct at_desc *desc, enum at_cmd cmd,
 int32_t at_run_cmd(struct at_desc *desc, enum at_cmd cmd, enum cmd_operation op,
 		union in_out_param *param)
 {
-	uint32_t id;
+	uint32_t	id;
+	struct at_buff	aux;
 
 	if (!desc)
 		return FAILURE;
@@ -516,9 +518,13 @@ int32_t at_run_cmd(struct at_desc *desc, enum at_cmd cmd, enum cmd_operation op,
 		/* Befor sending the payload, we must receive '>' */
 		while (desc->waiting_send)
 			;
-		/* Send payload */
-		at_strcpy(&desc->cmd, &param->in.send_data.data);
+		/* Set the payload as cmd during the transaction */
+		aux = desc->cmd;
+		desc->cmd = param->in.send_data.data;
 		write_cmd(desc);
+		/* Get back the old cmd buffer */
+		desc->cmd = aux;
+		desc->cmd.len = 0;
 	}
 
 	/* Wait for OK, SEND OK or ERROR */
@@ -596,8 +602,6 @@ struct aducm_uart_init_param aducm_param = {
 
 struct uart_init_param uart_param = {0, BD_115200, &aducm_param};
 
-struct timer_init_param timer_param = {0, 1000, 0, NULL};
-
 /**
  *
  * @param desc
@@ -622,9 +626,6 @@ int32_t at_init(struct at_desc **desc, struct at_init_param *param)
 	/* The read will be handled by the callback */
 	uart_read(ldesc->uart_desc, ldesc->read_ch, 1);
 
-	if (SUCCESS != timer_init(&(ldesc->timer), &timer_param))
-		goto free_uart;
-
 	/* Link buffer structure with static buffers */
 	ldesc->app_response.buff = ldesc->buffers.app_response_buff;
 	ldesc->app_response.len = 0;
@@ -635,11 +636,11 @@ int32_t at_init(struct at_desc **desc, struct at_init_param *param)
 
 	/* Disable echoing response */
 	if (SUCCESS != stop_echo(ldesc))
-		goto free_timer;
+		goto free_uart;
 
 	/* Test AT */
 	if (SUCCESS != at_run_cmd(ldesc, AT_ATTENTION, AT_EXECUTE_OP, NULL))
-		goto free_timer;
+		goto free_uart;
 
 	/* Get the connection type */
 	if (SUCCESS == at_run_cmd(ldesc, AT_SET_CONNECTION_TYPE, AT_QUERY_OP,
@@ -648,14 +649,12 @@ int32_t at_init(struct at_desc **desc, struct at_init_param *param)
 		ldesc->multiple_conections = conn ? true : false;
 	}
 	else {
-		goto free_timer;
+		goto free_uart;
 	}
 
 	*desc = ldesc;
 	return SUCCESS;
 
-free_timer:
-	timer_remove(ldesc->timer);
 free_uart:
 	uart_remove(ldesc->uart_desc);
 free_desc:
@@ -669,7 +668,6 @@ int32_t at_remove(struct at_desc *desc)
 {
 	if (!desc)
 		return FAILURE;
-	timer_remove(desc->timer);
 	uart_remove(desc->uart_desc);
 	free(desc);
 
