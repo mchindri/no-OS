@@ -7,12 +7,14 @@
 #include "uart.h"
 #include "irq.h"
 #include "util.h"
+#include "circular_buffer.h"
 //#include "list.h"
 
 /* Used to remove warnings */
 #define USTR(X)			((uint8_t *)(X))
 /* 100 miliseconds. Wait for a driver response when sending a cmd*/
 #define MODULE_TIMEOUT		20000
+#define RESET_DELAY		6000
 
 struct cmd_desc {
 	struct at_buff	cmd;
@@ -75,6 +77,8 @@ static inline void  get_conn_id(struct at_desc *desc, uint32_t *id)
 /*
  * For each read character from UART, check with the default responses and
  * update the responses indexes (desc->match_idx)
+ * TODO improvement if needed: Move some of this after cmd send. In the
+ * interrupt only check for \r\n and +IDP and async messages.
  */
 static inline void refresh_status(struct at_desc *desc)
 {
@@ -147,7 +151,6 @@ static inline void refresh_status(struct at_desc *desc)
  */
 static inline void wait_for_response(struct at_desc *desc)
 {
-	uint32_t counter;
 	uint32_t timeout;
 
 	timeout = MODULE_TIMEOUT;
@@ -160,6 +163,11 @@ static inline void wait_for_response(struct at_desc *desc)
 
 /*
  * If a message is received from the module. Get the length of the message
+ * In this function enters when a : is encountered
+ * TODO improvement if needed: If not working replace with + and do
+ * similar to OK/ERROR check.
+ * AFTER+ -> ipd -> , -> num -> (if cipmux)
+ *  , or : -> ..
  */
 static int32_t	process_ipd_msg(struct at_desc *desc, uint32_t *len) {
 	static const struct at_buff at_ipd = {USTR("+IPD,"), 5};
@@ -172,9 +180,10 @@ static int32_t	process_ipd_msg(struct at_desc *desc, uint32_t *len) {
 			*ipd = at_ipd.buff;
 	uint32_t	nb_ch;
 
-	i = desc->result.len;
+	i = desc->result.len - 1;
 	nb_ch = 0;
-	while (i >= 0 && !cmp && nb_ch < max_ch_search) {
+	while (i >= 0 && !cmp && nb_ch < max_ch_search &&
+		((result[i] >= '0' && result[i] <= '9') || result[i] == ',')) {
 		if (result[i] == ',') {
 			/* Compare backwords ipd with response */
 			k = 0;
@@ -220,19 +229,23 @@ static void	at_callback(void *app_param, enum UART_EVENT event,
 		desc->cmd.len = 0;
 		break;
 	case READ_DONE:
-		if (!desc->ipd_received) {
+		switch (desc->callback_state) {
+		case READING_MODULE_MSG:
 			if(*desc->read_ch == ':')
 				/* Check if message from server is received */
 				if (SUCCESS == process_ipd_msg(desc, &len))
 				{
 					/*
-					 * Set ipd_received and wait for buffer
-					 * to be filled
+					 * Set new state and submit buffer to
+					 * be filled
 					 */
-					desc->app_response.len = len;
+					desc->app_data.pending = len;
+					len = min(desc->app_data.size, len);
+					desc->app_data.pending -= len;
 					uart_read(desc->uart_desc,
-						desc->app_response.buff, len);
-					desc->ipd_received = true;
+						desc->app_data.data.buff, len);
+					desc->app_data.data.len = len;
+					desc->callback_state = READING_PAYLOAD;
 					break;
 				}
 			if (*desc->read_ch == '>' && desc->waiting_send) {
@@ -244,22 +257,55 @@ static void	at_callback(void *app_param, enum UART_EVENT event,
 			else {
 				/* Add received character to result buffer */
 				at_strcatch(&desc->result, *desc->read_ch);
-				/* Compare buffer with possible responses and
-				 * update status */
+				/*
+				 * Compare buffer with possible responses and
+				 * update status
+				 */
 				refresh_status(desc);
 			}
-		} else { //The server message filled the buffer
-			/* Notify that a message is available */
-			desc->ready = true;
+			/* Submmit buffer to read the next char */
+			uart_read(desc->uart_desc, desc->read_ch, 1);
+			break;
+		case READING_PAYLOAD:
 			/* Invalidate waiting for server message status */
-			desc->ipd_received = false;
+			if (!desc->app_data.pending) {
+				if (desc->app_callback)
+					desc->app_callback(desc->app_ctx,
+						desc->app_data.data.len);
+				desc->callback_state = READING_MODULE_MSG;
+				/* Submmit buffer to read the next char */
+				uart_read(desc->uart_desc, desc->read_ch, 1);
+			}
+			else {
+				if (desc->app_callback)
+					desc->app_callback(desc->app_ctx,
+						desc->app_data.data.len);
+				/*
+				 * In the callback, the user can submit a new
+				 * buffer to store the message
+				 */
+				len = min(desc->app_data.size,
+							desc->app_data.pending);
+				uart_read(desc->uart_desc,
+						desc->app_data.data.buff, len);
+				desc->app_data.data.len = len;
+				desc->app_data.pending -= len;
+			}
+			break;
+		case READING_UNVARNISHED:
+			cb_write(desc->cb_response, desc->read_ch, 1);
+			cb_size(desc->cb_response, &len);
+			if (desc->app_callback)
+				desc->app_callback(desc->app_ctx, len);
+			/* Submmit buffer to read the next char */
+			uart_read(desc->uart_desc, desc->read_ch, 1);
+			break;
 		}
-		/* Submmit buffer to read the next char */
-		uart_read(desc->uart_desc, desc->read_ch, 1);
 		break;
 	case ERROR:
 		/* TODO change to log */
-		printf("error 0x%x", (unsigned)data);
+		if (!desc->is_reset)
+			printf("error 0x%x", (unsigned)data);
 		//printf("DataAvailable");
 		uart_read(desc->uart_desc, desc->read_ch, 1);
 		/* In case is blocked in write_cmd */
@@ -297,20 +343,20 @@ static void	build_cmd_param(struct at_desc *desc, enum at_cmd id,
 	/* App_response is used as a temporary buffer */
 	switch (id){
 	case AT_DEEP_SLEEP:
-		at_sprintf(&desc->app_response, USTR("d"),
+		at_sprintf(&desc->cmd, USTR("d"),
 				param->deep_sleep_time_ms);
 		break;
 	case AT_SET_OPERATION_MODE:
-		at_sprintf(&desc->app_response, USTR("d"), param->wifi_mode);
+		at_sprintf(&desc->cmd, USTR("d"), param->wifi_mode);
 		break;
 
 	case AT_CONNECT_NETWORK:
-		at_sprintf(&desc->app_response, USTR("ss"),
+		at_sprintf(&desc->cmd, USTR("ss"),
 				&param->network.ssid,
 				&param->network.pwd);
 		break;
 	case AT_SET_ACCESS_POINT:
-		at_sprintf(&desc->app_response, USTR("ssdd"),
+		at_sprintf(&desc->cmd, USTR("ssdd"),
 				&param->ap.ssid, &param->ap.pwd,
 				param->ap.ch_id, param->ap.encription);
 		break;
@@ -318,13 +364,13 @@ static void	build_cmd_param(struct at_desc *desc, enum at_cmd id,
 		if (param->connection.soket_type == SOCKET_TCP) {
 			str_to_at(aux, USTR("TCP"));
 			if (desc->multiple_conections) {
-				at_sprintf(&desc->app_response, USTR("dssd"),
+				at_sprintf(&desc->cmd, USTR("dssd"),
 					(int32_t)param->connection.id,
 						aux,
 						&param->connection.addr,
 					(int32_t)param->connection.port);
 			} else {
-				at_sprintf(&desc->app_response, USTR("ssd"),
+				at_sprintf(&desc->cmd, USTR("ssd"),
 						aux,
 						&param->connection.addr,
 					(int32_t)param->connection.port);
@@ -332,7 +378,7 @@ static void	build_cmd_param(struct at_desc *desc, enum at_cmd id,
 		} else {
 			str_to_at(aux, USTR("UDP"));
 			if (desc->multiple_conections) {
-				at_sprintf(&desc->app_response, USTR("dssddd"),
+				at_sprintf(&desc->cmd, USTR("dssddd"),
 					(int32_t)param->connection.id,
 						aux,
 						&param->connection.addr,
@@ -340,7 +386,7 @@ static void	build_cmd_param(struct at_desc *desc, enum at_cmd id,
 					(int32_t)param->connection.local_port,
 					(int32_t)param->connection.udp_mode);
 			} else {
-				at_sprintf(&desc->app_response,
+				at_sprintf(&desc->cmd,
 						USTR("ssddd"),
 						aux,
 						&param->connection.addr,
@@ -354,53 +400,52 @@ static void	build_cmd_param(struct at_desc *desc, enum at_cmd id,
 		conn_id = desc->multiple_conections ? param->connection.id : 0;
 		if (desc->connections[conn_id].type == SOCKET_TCP) {
 			if (desc->multiple_conections)
-				at_sprintf(&desc->app_response, USTR("dd"),
+				at_sprintf(&desc->cmd, USTR("dd"),
 					(int32_t)param->send_data.id,
 					(int32_t)param->send_data.data.len);
 			else
-				at_sprintf(&desc->app_response, USTR("d"),
+				at_sprintf(&desc->cmd, USTR("d"),
 					(int32_t)param->send_data.data.len);
 		} else {
 			if (desc->multiple_conections)
-				at_sprintf(&desc->app_response, USTR("ddsd"),
+				at_sprintf(&desc->cmd, USTR("ddsd"),
 					(int32_t)param->send_data.id,
 					(int32_t)param->send_data.data.len,
 						&param->send_data.remote_ip,
 					(int32_t)param->send_data.remote_port);
 			else
-				at_sprintf(&desc->app_response, USTR("dsd"),
+				at_sprintf(&desc->cmd, USTR("dsd"),
 					(int32_t)param->send_data.data.len,
 						&param->send_data.remote_ip,
 					(int32_t)param->send_data.remote_port);
 		}
 		break;
 	case AT_STOP_CONNECTION:
-		at_sprintf(&desc->app_response, USTR("d"), param->conn_id);
+		at_sprintf(&desc->cmd, USTR("d"), param->conn_id);
 		break;
 	case AT_SET_CONNECTION_TYPE:
-		at_sprintf(&desc->app_response, USTR("d"),
+		at_sprintf(&desc->cmd, USTR("d"),
 				(int32_t)param->conn_type);
 		break;
 	case AT_SET_SERVER:
-		at_sprintf(&desc->app_response, USTR("dd"),
+		at_sprintf(&desc->cmd, USTR("dd"),
 						(int32_t)param->server.action,
 						(int32_t)param->server.port);
 		break;
 	case AT_SET_TRANSPORT_MODE:
-		at_sprintf(&desc->app_response, USTR("d"),
+		at_sprintf(&desc->cmd, USTR("d"),
 			(int32_t)param->transport_mode);
 		break;
 	case AT_SET_CLIENT_TIMEOUT:
-		at_sprintf(&desc->app_response, USTR("d"),
+		at_sprintf(&desc->cmd, USTR("d"),
 			(int32_t)param->timeout);
 		break;
 	case AT_PING:
-		at_sprintf(&desc->app_response, USTR("s"), &param->ping_ip);
+		at_sprintf(&desc->cmd, USTR("s"), &param->ping_ip);
 		break;
 	default:
 		return;
 	}
-	at_strcat(&desc->cmd, &desc->app_response);
 }
 
 /* Creat the driver command with the specified parameters */
@@ -408,6 +453,7 @@ static void	build_cmd(struct at_desc *desc, enum at_cmd cmd,
 			enum cmd_operation op, union in_out_param *param)
 {
 	/* Write command in buffer: AT[CMD][OP]<parmas>\r\n*/
+	desc->cmd.len = 0;
 	/* AT */
 	at_strcatch(&desc->cmd, 'A');
 	at_strcatch(&desc->cmd, 'T');
@@ -451,9 +497,13 @@ static int32_t	handle_special(struct at_desc *desc, enum at_cmd cmd)
 {
 	switch (cmd) {
 	case AT_RESET:
+		desc->is_reset = true;
 		write_cmd(desc);
-		mdelay(5000);
+		mdelay(RESET_DELAY);
 		desc->result.len = 0;
+		if (SUCCESS != stop_echo(desc))
+			return FAILURE;
+		desc->is_reset = false;
 		break;
 	case AT_DEEP_SLEEP:
 		/* TODO */
@@ -472,16 +522,38 @@ static int32_t	handle_special(struct at_desc *desc, enum at_cmd cmd)
 static int32_t	parse_result(struct at_desc *desc, enum at_cmd cmd,
 		union out_param *result)
 {
-	at_strcpy(&desc->app_response, &desc->result);
-	//Clear result
+	static struct at_buff	resp = {USTR("WIFI DISCONNECT\r\n"), 17};
+	uint32_t		timeout;
+	int32_t			ret;
+
+	ret = SUCCESS;
+	/* Copy the result buffer into the result parameter */
+	if (cmd == AT_DISCONNECT_NETWORK) {
+		//Wait for WIFI_DISCONNECT
+		timeout = 10;
+		do {
+			if (resp.len >= desc->result.len)
+				if (0 == memcmp(resp.buff, desc->result.buff,
+						resp.len))
+					break;
+			mdelay(100);
+		} while (timeout--);
+		if (timeout == 0) {
+			ret = FAILURE;
+			goto end;
+		}
+	}
+
+	/* TODO - Parse instead */
+	if (desc->result.len > 0)
+		if (SUCCESS != cb_write(desc->cb_response, desc->result.buff,
+						desc->result.len))
+			ret = FAILURE;
+
+end:
 	desc->result.len = 0;
-
-	/* TODO : Parse result to parameters */
-	/* Copy result in user buffer */
-	at_set(&result->result, desc->app_response.buff,
-					desc->app_response.len);
-
-	return SUCCESS;
+	result->result = desc->cb_response;
+	return ret;
 }
 
 /**
@@ -503,8 +575,13 @@ int32_t at_run_cmd(struct at_desc *desc, enum at_cmd cmd, enum cmd_operation op,
 	if (!(g_map[cmd].type & op))
 		return FAILURE;
 
-	if (desc->unvarnished_mode)
-		return FAILURE;
+	if (desc->callback_state == READING_UNVARNISHED) {
+		if (cmd == AT_SET_TRANSPORT_MODE &&
+				param->in.transport_mode == NORMAL_MODE)
+			desc->callback_state = READING_MODULE_MSG;
+		else
+			return FAILURE;
+	}
 
 	build_cmd(desc, cmd, op, param);
 
@@ -535,11 +612,14 @@ int32_t at_run_cmd(struct at_desc *desc, enum at_cmd cmd, enum cmd_operation op,
 	/* Update param related with connections */
 	if (cmd == AT_SET_CONNECTION_TYPE)
 		desc->multiple_conections = param->in.conn_type;
-	if (cmd == AT_START_CONNECTION) {
+	if (cmd == AT_START_CONNECTION && op == AT_SET_OP) {
 		id = desc->multiple_conections ? param->in.connection.id : 0;
 		desc->connections[id].active = true;
 		desc->connections[id].type = param->in.connection.soket_type;
 	}
+	if (cmd == AT_SET_TRANSPORT_MODE &&
+			param->in.transport_mode == UNVARNISHED_MODE)
+		desc->callback_state = READING_UNVARNISHED;
 	if (param) {
 		if (op == AT_SET_OP)
 			cmd = AT_GET_VERSION; //Only copy response
@@ -553,42 +633,66 @@ int32_t at_run_cmd(struct at_desc *desc, enum at_cmd cmd, enum cmd_operation op,
 	return SUCCESS;
 }
 
-int32_t enter_unvernished_mode(struct at_desc *desc)
+struct user_buff {
+	struct at_buff	buff;
+	uint32_t	size;
+};
+
+
+int32_t replace_buffer(struct at_desc *desc, uint8_t *in_buff, uint32_t in_size,
+					uint8_t **out_buff, uint32_t *out_size)
+{
+	if (!desc || !in_buff)
+		return FAILURE;
+
+	if (out_buff)
+		*out_buff = desc->app_data.data.buff;
+	if (out_size)
+		*out_size = desc->app_data.data.len;
+	desc->app_data.data.buff = in_buff;
+	desc->app_data.data.len = 0;
+	desc->app_data.size = in_size;
+
+	return SUCCESS;
+}
+
+int32_t enter_send_unvernished_mode(struct at_desc *desc)
 {
 	if (desc->multiple_conections
 			|| desc->connections[0].type != SOCKET_TCP
 			|| !desc->connections[0].active)
 		return FAILURE;
 
-	union in_out_param param;
-
-	param.in.transport_mode = UNVARNISHED_MODE;
-	build_cmd(desc, AT_SEND, AT_EXECUTE_OP, &param);
+	build_cmd(desc, AT_SEND, AT_EXECUTE_OP, NULL);
 	desc->waiting_send = true;
 	write_cmd(desc);
 	while (desc->waiting_send)
 		;
 
-	desc->unvarnished_mode = true;
+	desc->callback_state = READING_UNVARNISHED;
 
 	return SUCCESS;
 }
 
-int32_t send_unvarnished(struct at_desc *desc, const struct at_buff *msg)
+int32_t send_unvarnished(struct at_desc *desc, uint8_t *data, uint32_t len)
 {
 	//iF MSG->LEN > 2048 -> todo SPLIT packages ??
 
-	uart_write(desc->uart_desc, msg->buff, msg->len);
+	uart_write(desc->uart_desc, data, len);
 
 	return SUCCESS;
 }
 
-int32_t exit_unvernished_mode(struct at_desc *desc)
+int32_t read_unvarnished(struct at_desc *desc, uint8_t *data, uint32_t len) {
+	return cb_read(desc->cb_response, data, len);
+}
+
+int32_t exit_send_unvernished_mode(struct at_desc *desc)
 {
 	const static struct at_buff end_cmd = {USTR("+++"), 3};
 	uart_write(desc->uart_desc, end_cmd.buff, end_cmd.len);
 
-	desc->unvarnished_mode = false;
+	desc->callback_state = READING_MODULE_MSG;
 	return SUCCESS;
 }
 
@@ -613,7 +717,8 @@ int32_t at_init(struct at_desc **desc, struct at_init_param *param)
 	union in_out_param	result;
 	uint32_t		conn;
 
-	if (!desc || !param || !param->read_buff || !param->buff_size)
+	//TODO check param
+	if (!desc || !param || !param->buff)
 		return FAILURE;
 
 	ldesc = calloc(1, sizeof(*ldesc));
@@ -627,34 +732,51 @@ int32_t at_init(struct at_desc **desc, struct at_init_param *param)
 	uart_read(ldesc->uart_desc, ldesc->read_ch, 1);
 
 	/* Link buffer structure with static buffers */
-	ldesc->app_response.buff = ldesc->buffers.app_response_buff;
-	ldesc->app_response.len = 0;
 	ldesc->result.buff = ldesc->buffers.result_buff;
 	ldesc->result.len = 0;
 	ldesc->cmd.buff = ldesc->buffers.cmd_buff;
 	ldesc->cmd.len = CMD_BUFF_LEN;
 
+	if (SUCCESS != cb_init(&ldesc->cb_response, RESULT_BUFF_LEN,
+							sizeof(uint8_t)))
+		goto free_uart;
+
+	/* Store user init params */
+	ldesc->app_data.data.buff = param->buff;
+	ldesc->app_data.data.len = 0;
+	ldesc->app_data.size = param->size;
+	ldesc->app_data.pending = 0;
+	ldesc->app_callback = param->callback;
+	ldesc->app_ctx = param->ctx;
+	ldesc->callback_state = READING_MODULE_MSG;
+
 	/* Disable echoing response */
 	if (SUCCESS != stop_echo(ldesc))
-		goto free_uart;
+		goto free_cb;
 
 	/* Test AT */
 	if (SUCCESS != at_run_cmd(ldesc, AT_ATTENTION, AT_EXECUTE_OP, NULL))
-		goto free_uart;
+		goto free_cb;
 
 	/* Get the connection type */
 	if (SUCCESS == at_run_cmd(ldesc, AT_SET_CONNECTION_TYPE, AT_QUERY_OP,
 			&result)) {
-		at_sscanf(&result.out.result, USTR("+CIPMUX:%d\r\n"), &conn);
+		/* ldesc->cmd used as temporary buffer */
+		cb_size(result.out.result, &ldesc->cmd.len);
+		cb_read(result.out.result, ldesc->cmd.buff, ldesc->cmd.len);
+		at_sscanf(&ldesc->cmd, USTR("+CIPMUX:%d\r\n"), &conn);
+		ldesc->cmd.len = 0;
 		ldesc->multiple_conections = conn ? true : false;
 	}
 	else {
-		goto free_uart;
+		goto free_cb;
 	}
 
 	*desc = ldesc;
 	return SUCCESS;
 
+free_cb:
+	cb_remove(ldesc->cb_response);
 free_uart:
 	uart_remove(ldesc->uart_desc);
 free_desc:
@@ -668,6 +790,7 @@ int32_t at_remove(struct at_desc *desc)
 {
 	if (!desc)
 		return FAILURE;
+	cb_remove(desc->cb_response);
 	uart_remove(desc->uart_desc);
 	free(desc);
 
@@ -726,9 +849,10 @@ static inline void at_strcatch(struct at_buff *dest, uint8_t ch) {
 
 /**
  * @brief Create formated string in dest according with fmt
- * The parameters ar separated by , and the strings are rounded by '\"' and
+ * The formated string is concatenated to dest.
+ * The parameters are separated by , and the strings are rounded by '\"' and
  * escaped.
- * @param dest - Where the buffer is written
+ * @param dest - Where the buffer is written.
  * @param fmt - Format: Null terminated string containing the type of the
  * arguments. d for int32_t or s for at_buff. Ex: "dds" meand: 2 integers and a
  * int32_t.
@@ -741,7 +865,6 @@ static void at_sprintf(struct at_buff *dest, uint8_t *fmt, ...){
 	    uint32_t		i;
 	    int32_t		nb = 0;
 
-	    dest->len = 0;
 	    va_start (args, fmt);
 	    while (*fmt)
 	    {

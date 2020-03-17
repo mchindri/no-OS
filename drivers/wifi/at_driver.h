@@ -20,7 +20,7 @@
  * Should be fine for ping too
  */
 #define CMD_BUFF_LEN	120u
-#define RESULT_BUFF_LEN	2000u //? To think about this
+#define RESULT_BUFF_LEN	500u //? To think about this
 
 
 /* TODO */
@@ -113,8 +113,11 @@ union out_param {
 	/** Result form AT_SET_CLIENT_TIMEOUT */
 	struct cipsto_param	timeout;
 #else
-	/* The result of the executing command is writtend in result */
-	struct at_buff		result;
+	/*
+	 * The result of the executing command is written in result
+	 * The circular buffer is of type uint8_t
+	 */
+	struct circular_buffer	*result;
 #endif
 };
 
@@ -146,11 +149,6 @@ union in_param {
 	struct at_buff		ping_ip;
 };
 
-/* Parameter to initialize driver */
-struct at_init_param {
-	uint8_t		*read_buff;
-	uint32_t	buff_size;
-};
 
 /* Parameter used to send and receive data from a command */
 union in_out_param {
@@ -158,16 +156,46 @@ union in_out_param {
 	union in_param	in;
 };
 
+/* Parameter to initialize driver */
+struct at_init_param {
+	/**
+	 * @brief Will be called when data is available.
+	 * @param ctx - User parameter
+	 * @param len - Number of bytes available. If len is equal tot the size
+	 * of the last submited buffer. The buffer must be replaced, otherwise
+	 * data will be overwritten.
+	 * If len is less than last size, new data will be concatenated to the
+	 * current buffer. To tell the buffer that data have been read, a
+	 * replace buffer has to be made.
+	 */
+	void		(*callback)(void *ctx, uint32_t len);
+	void		*ctx;
+	void		*buff;
+	uint32_t	size;
+};
+
 /** If ok on list, move descriptor to .c file */
 struct at_desc {
 	/** Buffers */
 	struct {
-		uint8_t app_response_buff[RESULT_BUFF_LEN];
 		uint8_t	result_buff[RESULT_BUFF_LEN];
 		uint8_t	cmd_buff[CMD_BUFF_LEN];
 	} 			buffers;
+	/** Buffer where is stored the new_received data */
+	struct {
+		/* Buffer where to store the data */
+		struct at_buff		data;
+		/* Size of the buffer */
+		uint32_t		size;
+		/* Pending bytes for read */
+		uint32_t		pending;
+	}			app_data;
+	/** Callback that notifies the user when new data is received */
+	void		(*app_callback)(void *ctx, uint32_t len);
+	/** Context for the callback */
+	void		*app_ctx;
 	/** Buffer where is stored the output parameter for the application */
-	struct at_buff		app_response;
+	struct circular_buffer	*cb_response;
 	/** Buffer where data received from the module is stored */
 	struct at_buff		result;
 	/** Buffer to build the command */
@@ -183,12 +211,19 @@ struct at_desc {
 		RESULT_ERROR,
 		OVERFLOW_ERROR
 	}			result_status;
+
+	volatile enum {
+		/* Normal mode. Read each char and interpret the result */
+		READING_MODULE_MSG,
+		/* When an +IPD is received, callback enter in thsi mode */
+		READING_PAYLOAD,
+		/* Read char, put in cb_buffer and notify user */
+		READING_UNVARNISHED
+	}			callback_state;
 	/** Event used when sending payload */
 	volatile bool		waiting_send;
-	/** Event used when reading payload */
-	volatile bool		ipd_received;
-	/** Unvarnished mode active or not */
-	bool			unvarnished_mode;
+	/** Reseting module */
+	volatile bool		is_reset;
 	/** Indexes for in the possibles response given by the driver */
 	uint32_t		match_idx[NB_RESPONSES];
 	/** UART handler */
@@ -211,25 +246,22 @@ int32_t at_init(struct at_desc **desc, struct at_init_param *param);
 /** Free resources used by wifi driver */
 int32_t at_remove(struct at_desc *desc);
 
-/** Read payload (TODO) */
-int32_t get_last_message(struct at_desc *desc, struct at_buff *msg);
-
 /** Execute AT command */
 int32_t at_run_cmd(struct at_desc *desc, enum at_cmd cmd, enum cmd_operation op,
 			union in_out_param *param);
+/** Submit new buffer to read data */
+int32_t replace_buffer(struct at_desc *desc, uint8_t *in_buff, uint32_t in_size,
+					uint8_t **out_buff, uint32_t *out_size);
 
-int32_t enter_unvernished_mode(struct at_desc *desc);
-int32_t send_unvarnished(struct at_desc *desc, const struct at_buff *msg);
-int32_t exit_unvernished_mode(struct at_desc *desc);
+/* Not working yet */
+int32_t enter_send_unvernished_mode(struct at_desc *desc);
+int32_t send_unvarnished(struct at_desc *desc, uint8_t *data, uint32_t len);
+int32_t read_unvarnished(struct at_desc *desc, uint8_t *data, uint32_t len);
+int32_t exit_send_unvernished_mode(struct at_desc *desc);
 
 /** Convert null terminated string to at_buff */
 struct at_buff	*str_to_at(struct at_buff *dest, uint8_t *src);
 /** Convert at_buff to null terminated string */
 uint8_t		*at_to_str(struct at_buff *src);
-
-/** TODO :
- * Circular buffer for user buffer and for read buffer
- * Create user callback
- */
 
 #endif
