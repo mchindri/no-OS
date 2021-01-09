@@ -59,6 +59,12 @@
  */
 #define EOVERRUN	(__ELASTERROR + 1) /* Circular buffer overrun */
 
+#include <stdio.h>
+/*
+#define IS_ERR_VALUE(ret) ((ret) < 0 ?\
+		(true, printf("Errors: %d(-0x%x). Func: %s. Line: %d\n", (int)ret, (int)-ret,\
+				__func__, __LINE__)):\
+		(false))
+*/
 #define IS_ERR_VALUE(x)	((x) < 0)
-
 #endif // ERROR_H_

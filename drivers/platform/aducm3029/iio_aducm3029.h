@@ -40,6 +40,8 @@
 #ifndef IIO_ADCUM3029
 #define IIO_ADCUM3029
 
+#ifdef IIO_SUPPORT
+
 #include "iio_types.h"
 #include "aducm3029_adc.h"
 
@@ -194,5 +196,7 @@ static struct iio_device iio_aducm3029_desc = {
 	.prepare_transfer = (int32_t (*)())iio_aducm3029_adc_set_mask,
 	.read_dev = (int32_t (*)())iio_aducm3029_adc_read,
 };
+
+#endif
 
 #endif

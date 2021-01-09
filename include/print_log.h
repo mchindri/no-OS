@@ -107,4 +107,11 @@ fmt, __FILE__, __func__, __LINE__, ##args)
 #define pr_debug(fmt, args...)
 #endif
 
+#define CHECK_RET(ret, msg) do {\
+		if (IS_ERR_VALUE(ret)) {\
+			pr_err("%s: %d (-0x%x)\n", msg, -ret, ret);\
+			return ret;\
+		}\
+	} while (0)
+
 #endif /* PRINT_LOG_H_ */
