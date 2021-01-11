@@ -124,6 +124,14 @@ int32_t aducm3029_adc_init(struct adc_desc **desc, struct adc_init_param *param)
 	if (ret != ADI_ADC_SUCCESS)
 		goto close_adc;
 
+	ret = adi_adc_SetResolution(ldesc->dev, ADI_ADC_RESOLUTION_12_BIT);
+	if (ret != ADI_ADC_SUCCESS)
+		goto close_adc;
+
+	ret = adi_adc_EnableAveraging(ldesc->dev, 16);
+	if (ret != ADI_ADC_SUCCESS)
+		goto close_adc;
+
 	ret = adi_adc_EnableADCSubSystem(ldesc->dev, true);
 	if (ret != ADI_ADC_SUCCESS)
 		goto close_adc;

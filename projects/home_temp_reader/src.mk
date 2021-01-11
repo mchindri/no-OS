@@ -4,7 +4,8 @@ SRC_DIRS +=	$(PROJECT)/srcs		\
 		$(PLATFORM_DRIVERS)	\
 		$(NO-OS)/util		\
 		$(NO-OS)/network	\
+		$(NO-OS)/drivers/adc/aducm3029 \
 		$(INCLUDE)
 
 LIBRARIES += mqtt
-CFLAGS += DISABLE_SECURE_SOCKET
+CFLAGS += -DDISABLE_SECURE_SOCKET

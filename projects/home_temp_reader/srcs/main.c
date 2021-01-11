@@ -4,8 +4,10 @@
 #include "wifi.h"
 #include "tcp_socket.h"
 #include "gpio.h"
+#include "delay.h"
 #include "print_log.h"
 #include <string.h>
+#include "aducm3029_adc.h"
 
 static struct gpio_desc *gpios[TOTAL_GPIOS];
 static int32_t gpios_nb[TOTAL_GPIOS] = {
@@ -67,25 +69,6 @@ int32_t init_and_connect_wifi(struct wifi_desc **wifi)
 	return SUCCESS;
 }
 
-void mqtt_message_handler(struct mqtt_message_data *msg)
-{
-	char	buff[101];
-	int32_t	len;
-
-	/* Message.payload don't have at the end '\0' so we have to add it. */
-	len = msg->message.len > 100 ? 100 : msg->message.len;
-	memcpy(buff, msg->message.payload, len);
-	buff[len] = 0;
-
-	if (strncmp(buff, "on", 3) == 0)
-		gpio_set_value(gpios[RELAY], GPIO_HIGH);
-
-	if (strncmp(buff, "off", 4) == 0)
-			gpio_set_value(gpios[RELAY], GPIO_LOW);
-
-	printf("Topic:%s -- Payload: %s\n", msg->topic, buff);
-}
-
 int init_and_connect_to_mqtt_broker(struct mqtt_desc **mqtt,
 				    struct wifi_desc *wifi)
 {
@@ -127,7 +110,7 @@ int init_and_connect_to_mqtt_broker(struct mqtt_desc **mqtt,
 		.read_buff = read_buff,
 		.send_buff_size = BUFF_LEN,
 		.read_buff_size = BUFF_LEN,
-		.message_handler = mqtt_message_handler
+		.message_handler = NULL
 	};
 	ret = mqtt_init(mqtt, &mqtt_init_param);
 	CHECK_RET(ret, "Error mqtt_init");
@@ -145,13 +128,15 @@ int init_and_connect_to_mqtt_broker(struct mqtt_desc **mqtt,
 
 	printf("Connected to mqtt broker\n");
 
-	/* Subscribe for a topic */
-	ret = mqtt_subscribe(*mqtt, MQTT_SUBSCRIBE_TOPIC, MQTT_QOS0, NULL);
-	CHECK_RET(ret, "Error mqtt_subscribe");
-	printf("Subscribed to topic: %s\n", MQTT_SUBSCRIBE_TOPIC);
-
 	return SUCCESS;
 }
+
+#include <drivers/gpio/adi_gpio.h>
+
+/** Get GPIO pin from GPIO number */
+#define PIN(nb)		(1u << ((nb) & 0x0F))
+/** Get GPIO port from GPIO number */
+#define PORT(nb)	(((nb) & 0xF0) >> 4)
 
 int32_t init_gpios()
 {
@@ -164,9 +149,19 @@ int32_t init_gpios()
 		default_init.number = gpios_nb[i];
 		ret = gpio_get(&gpios[i], &default_init);
 		CHECK_RET(ret, "Gpio get failed");
-		ret = gpio_direction_output(gpios[i], GPIO_LOW);
-		CHECK_RET(ret, "Gpio get failed");
 	}
+
+	ret = gpio_direction_output(gpios[RED], GPIO_HIGH);
+	CHECK_RET(ret, "gpio_direction_output failed");
+	ret = gpio_direction_output(gpios[GREEN], GPIO_HIGH);
+	CHECK_RET(ret, "gpio_direction_output failed");
+	ret = gpio_direction_input(gpios[RELAY]);
+	CHECK_RET(ret, "gpio_direction_output failed");
+	ret = adi_gpio_PullUpEnable(PORT(gpios[RELAY]->number),
+			PIN(gpios[RELAY]->number), true);
+	CHECK_RET(ret, "adi_gpio_PullUpEnable failed");
+
+	return 0;
 }
 
 int32_t set_status(int success)
@@ -177,13 +172,11 @@ int32_t set_status(int success)
 	if (success)
 		val = !val;
 
-
 	ret |= gpio_set_value(gpios[RED], val);
 	ret |= gpio_set_value(gpios[GREEN], !val);
 
 	return ret;
 }
-
 
 int main(void)
 {
@@ -210,13 +203,32 @@ int main(void)
 	CHECK_RET(ret, "set_status failed\n");
 
 	while (true) {
-		ret = mqtt_yield(mqtt, 1000);
-		if (IS_ERR_VALUE(ret)) {
-			ret = set_status(false);
-			while (true);
-		}
+		uint8_t val;
+		char	*payload;
 
+		ret = gpio_get_value(gpios[RELAY], &val);
+		if (IS_ERR_VALUE(ret))
+			break;
+		if (val == GPIO_LOW)
+			payload = "on";
+		else
+			payload = "off";
+
+		printf("Payload: %s\n", payload);
+		struct mqtt_message msg = {
+				.payload = payload,
+				.len = strlen(payload),
+				.qos = MQTT_QOS0,
+				.retained = true
+		};
+		ret = mqtt_publish(mqtt, MQTT_SUBSCRIBE_TOPIC, &msg);
+		if (IS_ERR_VALUE(ret))
+			break;
+		mdelay(60000);
 	}
+
+	set_status(false);
+	while (true);
 
 	return 0;
 }
