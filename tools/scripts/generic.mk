@@ -113,7 +113,11 @@ PROJECT_BUILD 		= $(BUILD_DIR)/app
 OBJECTS_DIR		= $(BUILD_DIR)/objs
 WORKSPACE		?= $(BUILD_DIR)
 PLATFORM_TOOLS	= $(NO-OS)/tools/scripts/platform/$(PLATFORM)
-BINARY			= $(BUILD_DIR)/$(PROJECT_NAME).elf
+BINARY			?= $(BUILD_DIR)/$(PROJECT_NAME).elf
+
+a = $(WORKSPACE) $(BUILD_DIR_NAME)
+test:
+	@echo $a
 
 ifneq ($(words $(NO-OS)), 1)
 $(error $(ENDL)ERROR:$(ENDL)\
@@ -192,7 +196,7 @@ include $(NO-OS)/tools/scripts/libraries.mk
 
 # Get all .c and .h files from SRC_DIRS
 SRCS     += $(foreach dir, $(SRC_DIRS), $(call rwildcard, $(dir),*.c))
-INCS     += $(foreach dir, $(SRC_DIRS), $(call rwildcard, $(dir),*.h))
+INCS     += $(foreach dir, $(SRC_DIRS) $(INCS_DIRS), $(call rwildcard, $(dir),*.h))
 
 # Recursive ignored files. If a directory is in the variable IGNORED_FILES,
 # all files from inside the directory will be ignored
@@ -218,10 +222,6 @@ ifneq ($(REL_ASM_SRCS),$(ASM_OBJS_S))
 	ASM_OBJS += $(ASM_OBJS_S)
 endif
 
-#Add to include all directories containing a .h file
-EXTRA_INC_PATHS += $(sort $(foreach dir, $(INCS_IN_BUILD),$(dir $(dir))))
-CFLAGS += $(addprefix -I,$(EXTRA_INC_PATHS) $(PLATFORM_INCS))
-
 #Will be used to add this flags to sdk project
 FLAGS_WITHOUT_D = $(sort $(subst -D,,$(filter -D%, $(CFLAGS))))
 
@@ -235,6 +235,10 @@ INCS_IN_BUILD = $(call relative_to_project, $(INCS))
 DIRS_TO_CREATE = $(sort $(dir $(call relative_to_project, $(FILES_OUT_OF_DIRS) $(SRC_DIRS))))
 #Prefixes from get_relative_path 
 DIRS_TO_REMOVE = $(addprefix $(PROJECT_BUILD)/,$(CREATED_DIRECTORIES))
+
+#Add to include all directories containing a .h file
+EXTRA_INC_PATHS += $(sort $(foreach dir, $(INCS_IN_BUILD),$(dir $(dir))))
+CFLAGS += $(addprefix -I,$(EXTRA_INC_PATHS) $(PLATFORM_INCS))
 
 #------------------------------------------------------------------------------
 #                             Generic Goals                         
