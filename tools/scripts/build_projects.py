@@ -69,7 +69,6 @@ def main():
 LOCAL_BUILD=n LINK_SRCS=n BINARY=%s VERBOSE=y -j%d ' % (projet_dir, flags, build_dir_name, binary, multiprocessing.cpu_count() - 1)
 					run_cmd(cmd + 'ra')
 					if (platform == 'aducm3029'):
-						run_cmd(cmd + 'hex')
 						export_file = export_file.replace('.elf', '.hex')
 					run_cmd("cp %s %s" % (export_file, project_export))
 					print(TGREEN + "DONE" + TWHITE)

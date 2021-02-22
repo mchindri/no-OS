@@ -133,8 +133,7 @@ HEX = $(basename $(BINARY)).hex
 #                                 RULES                              
 #------------------------------------------------------------------------------
 
-PHONY += hex
-hex: $(HEX)
+post_build: $(HEX)
 
 $(HEX): $(BINARY)
 	$(MUTE) $(call print,[HEX] $(notdir $@))
@@ -148,7 +147,7 @@ clean_hex:
 	-$(MUTE) $(call remove_fun,$(HEX)) $(HIDE)
 
 ifneq ($(wildcard $(BUILD_DIR)),)
-all: $(HEX) $(PIN_MUX)
+all: $(PIN_MUX)
 endif
 
 #Used to update pinmux if updated on project
