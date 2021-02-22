@@ -65,11 +65,11 @@ def main():
 					build_dir_name = 'build_%s_%s' % (platform, build_name)
 					binary = os.path.join(build_dir_name, "%s_%s.elf" % (project, build_name))
 					export_file = os.path.join(projet_dir, binary)
+					if (platform == 'aducm3029'):
+						export_file = export_file.replace('.elf', '.hex')
 					cmd = 'make -C %s %s BUILD_DIR_NAME=%s \
 LOCAL_BUILD=n LINK_SRCS=n BINARY=%s VERBOSE=y -j%d ' % (projet_dir, flags, build_dir_name, binary, multiprocessing.cpu_count() - 1)
 					run_cmd(cmd + 'ra')
-					if (platform == 'aducm3029'):
-						export_file = export_file.replace('.elf', '.hex')
 					run_cmd("cp %s %s" % (export_file, project_export))
 					print(TGREEN + "DONE" + TWHITE)
 			fp.close()
