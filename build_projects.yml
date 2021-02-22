@@ -1,0 +1,29 @@
+trigger:
+- master
+- dev/*
+
+pr:
+- main
+- master
+
+variables:
+- group: noos_releases_group_variables
+
+jobs:
+- job: Projects
+  pool: LocalPool
+  steps:
+  - checkout: self
+    condition: eq(variables.runCondition, true)
+    fetchDepth: 50
+    submodules: true
+    clean: true
+    persistCredentials: true
+  - script: 'python ./tools/scripts/build_projects.py . $(RELEASE_DIR)'
+    condition: eq(variables.runCondition, true)
+    displayName: 'Run project build'
+  - task: PublishPipelineArtifact@1
+    inputs:
+      targetPath: '$(Build.Repository.LocalPath)/$(RELEASE_DIR).zip'
+      artifact: '$(ARTIFACT_NAME)'
+      publishLocation: 'pipeline'

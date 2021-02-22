@@ -22,11 +22,9 @@ def parse_input():
 			    formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument('noos_location', help="Path to noos location")
     parser.add_argument('export_dir', help="Path where to save files")
-    parser.add_argument('platform', help="Platform to build for",
-				choices=['aducm3029', 'xilinx', 'stm32', 'altera'])
     args = parser.parse_args()
 
-    return (args.noos_location, args.platform, args.export_dir)
+    return (args.noos_location, args.export_dir)
 
 def run_cmd(cmd):
 	log_file = 'log.txt'
@@ -43,34 +41,35 @@ def to_blue(str):
 
 def main():
 	create_dir_cmd = "test -d {0} || mkdir -p {0}"
-	(noos, platform, export_dir) = parse_input()
+	(noos, export_dir) = parse_input()
 	projets = os.path.join(noos,'projects')
 	run_cmd(create_dir_cmd.format(export_dir))
 	for project in os.listdir(projets):
+		project_export = os.path.join(export_dir, project)
+		run_cmd(create_dir_cmd.format(project_export))
 		projet_dir = os.path.join(projets, project)
 		build_file = os.path.join(projet_dir, 'builds.json')
 		if os.path.isfile(build_file):
 			fp = open(build_file)
 			configs = json.loads(fp.read())
-			for (cur_platform, config) in configs.items():
-				if (cur_platform == platform):
-					platform_export_dir = os.path.join(export_dir, platform)
-					run_cmd(create_dir_cmd.format(platform_export_dir))
-					for (build_name, flags) in config.items():
-						print("Runing build %s on project %s for platform %s" %
-							(to_blue(build_name),
-							to_blue(project),
-							to_blue(cur_platform)))
-						build_dir_name = 'build_%s_%s' % (cur_platform, build_name)
-						binary = os.path.join(build_dir_name, "%s_%s.elf" % (project, build_name))
-						export_file = os.path.join(projet_dir, binary)
-						cmd = 'make -C %s %s BUILD_DIR_NAME=%s\
- LOCAL_BUILD=n LINK_SRCS=n BINARY=%s VERBOSE=y -j%d ' % (projet_dir, flags, build_dir_name, binary, multiprocessing.cpu_count() - 1)
-						run_cmd(cmd + 'ra')
-						if (cur_platform == 'aducm3029'):
-							run_cmd(cmd + 'hex')
-							export_file = export_file.replace('.elf', '.hex')
-						run_cmd("cp %s %s" % (export_file, platform_export_dir))
-						print(TGREEN + "DONE" + TWHITE)
+			for (platform, config) in configs.items():
+				for (build_name, flags) in config.items():
+					print("Runing build %s on project %s for platform %s" %
+						(to_blue(build_name),
+						to_blue(project),
+						to_blue(platform)))
+					build_dir_name = 'build_%s_%s' % (platform, build_name)
+					binary = os.path.join(build_dir_name, "%s_%s.elf" % (project, build_name))
+					export_file = os.path.join(projet_dir, binary)
+					cmd = 'make -C %s %s BUILD_DIR_NAME=%s\
+LOCAL_BUILD=n LINK_SRCS=n BINARY=%s VERBOSE=y -j%d ' % (projet_dir, flags, build_dir_name, binary, multiprocessing.cpu_count() - 1)
+					run_cmd(cmd + 'ra')
+					if (platform == 'aducm3029'):
+						run_cmd(cmd + 'hex')
+						export_file = export_file.replace('.elf', '.hex')
+					run_cmd("cp %s %s" % (export_file, project_export))
+					print(TGREEN + "DONE" + TWHITE)
 			fp.close()
+		run_cmd("zip %s.zip %s" % (project_export, os.path.join(project_export, "*")))
+		
 main()
