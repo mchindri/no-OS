@@ -14,13 +14,11 @@ jobs:
   pool: LocalPool
   steps:
   - checkout: self
-    condition: eq(variables.runCondition, true)
     fetchDepth: 50
     submodules: true
     clean: true
     persistCredentials: true
   - script: 'python ./tools/scripts/build_projects.py . $(RELEASE_DIR)'
-    condition: eq(variables.runCondition, true)
     displayName: 'Run project build'
   - task: PublishPipelineArtifact@1
     inputs:
