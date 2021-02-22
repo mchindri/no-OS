@@ -26,6 +26,8 @@ def parse_input():
 
     return (args.noos_location, args.export_dir)
 
+ERR = 0
+
 def run_cmd(cmd):
 	log_file = 'log.txt'
 	print(cmd)
@@ -35,6 +37,7 @@ def run_cmd(cmd):
 		print(TGREEN + "Error" + TWHITE)
 		print("See log:")
 		os.system("cat %s" % log_file)
+		ERR = 1
 
 def to_blue(str):
 	return TBLUE + str + TWHITE
@@ -61,7 +64,7 @@ def main():
 					build_dir_name = 'build_%s_%s' % (platform, build_name)
 					binary = os.path.join(build_dir_name, "%s_%s.elf" % (project, build_name))
 					export_file = os.path.join(projet_dir, binary)
-					cmd = 'make -C %s %s BUILD_DIR_NAME=%s\
+					cmd = 'make -C %s %s BUILD_DIR_NAME=%s \
 LOCAL_BUILD=n LINK_SRCS=n BINARY=%s VERBOSE=y -j%d ' % (projet_dir, flags, build_dir_name, binary, multiprocessing.cpu_count() - 1)
 					run_cmd(cmd + 'ra')
 					if (platform == 'aducm3029'):
@@ -70,6 +73,8 @@ LOCAL_BUILD=n LINK_SRCS=n BINARY=%s VERBOSE=y -j%d ' % (projet_dir, flags, build
 					run_cmd("cp %s %s" % (export_file, project_export))
 					print(TGREEN + "DONE" + TWHITE)
 			fp.close()
-			run_cmd("zip %s.zip %s" % (project_export, os.path.join(project_export, "*")))
+			run_cmd("zip -jm %s.zip %s" % (project_export, os.path.join(project_export, "*")))
+			run_cmd("rm -rf %s" % project_export)
 		
 main()
+exit(ERR)
