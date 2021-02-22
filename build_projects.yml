@@ -22,6 +22,6 @@ jobs:
     displayName: 'Run project build'
   - task: PublishPipelineArtifact@1
     inputs:
-      targetPath: '$(Build.Repository.LocalPath)/$(RELEASE_DIR).zip'
+      targetPath: '$(Build.Repository.LocalPath)/$(RELEASE_DIR)/*'
       artifact: '$(ARTIFACT_NAME)'
       publishLocation: 'pipeline'
