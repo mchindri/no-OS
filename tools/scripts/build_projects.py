@@ -46,10 +46,10 @@ def main():
 	run_cmd(create_dir_cmd.format(export_dir))
 	for project in os.listdir(projets):
 		project_export = os.path.join(export_dir, project)
-		run_cmd(create_dir_cmd.format(project_export))
 		projet_dir = os.path.join(projets, project)
 		build_file = os.path.join(projet_dir, 'builds.json')
 		if os.path.isfile(build_file):
+			run_cmd(create_dir_cmd.format(project_export))
 			fp = open(build_file)
 			configs = json.loads(fp.read())
 			for (platform, config) in configs.items():
@@ -70,6 +70,6 @@ LOCAL_BUILD=n LINK_SRCS=n BINARY=%s VERBOSE=y -j%d ' % (projet_dir, flags, build
 					run_cmd("cp %s %s" % (export_file, project_export))
 					print(TGREEN + "DONE" + TWHITE)
 			fp.close()
-		run_cmd("zip %s.zip %s" % (project_export, os.path.join(project_export, "*")))
+			run_cmd("zip %s.zip %s" % (project_export, os.path.join(project_export, "*")))
 		
 main()
