@@ -67,11 +67,10 @@ def main():
 					export_file = os.path.join(projet_dir, binary)
 					cmd = 'make -C %s %s BUILD_DIR_NAME=%s \
 LOCAL_BUILD=n LINK_SRCS=n BINARY=%s VERBOSE=y -j%d ' % (projet_dir, flags, build_dir_name, binary, multiprocessing.cpu_count() - 1)
-					#run_cmd(cmd + 'ra')
+					run_cmd(cmd + 'ra')
 					if (platform == 'aducm3029'):
-						#run_cmd(cmd + 'hex')
+						run_cmd(cmd + 'hex')
 						export_file = export_file.replace('.elf', '.hex')
-						run_cmd("mkdir -p `dirname %s` && touch %s" % (export_file, export_file))
 					run_cmd("cp %s %s" % (export_file, project_export))
 					print(TGREEN + "DONE" + TWHITE)
 			fp.close()
