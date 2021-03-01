@@ -25,3 +25,4 @@ jobs:
       targetPath: '$(Build.Repository.LocalPath)/$(RELEASE_DIR)'
       artifact: '$(ARTIFACT_NAME)'
       publishLocation: 'pipeline'
+
